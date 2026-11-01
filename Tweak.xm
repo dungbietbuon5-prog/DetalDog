@@ -2,11 +2,10 @@
 #import <UIKit/UIKit.h>
 #import <mach-o/dyld.h>
 #import <mach/vm_map.h>
+#import <mach/mach.h>
 #include <cmath>
+#include <string.h>
 
-// ==========================================
-// BỘ OFFSET FF NORMAL (Dùng #define cho an toàn)
-// ==========================================
 #define OFF_GameFacade         0xA72E4E0
 #define OFF_GameFacade_P2      0xB8
 #define OFF_BaseGame_Match     0x90
@@ -37,9 +36,14 @@ uintptr_t get_base_address() {
 
 template <typename T>
 T ReadMemory(uintptr_t address) {
-    if (address < 0x100000000 || address > 0x7FFFFFFFFFFF) return T{};
+    T empty_val;
+    memset(&empty_val, 0, sizeof(T));
+    if (address < 0x100000000 || address > 0x7FFFFFFFFFFF) return empty_val;
     return *(T*)(address);
 }
+
+// Đưa Matrix ra ngoài hàm để tránh lỗi template local type
+struct Matrix { float m[16]; };
 
 struct Vector3 {
     float x, y, z;
@@ -53,7 +57,6 @@ struct Vector3 {
 
 Vector3 GetBonePosition(uintptr_t transformPtr) {
     if (!transformPtr) return Vector3();
-    struct Matrix { float m[16]; };
     Matrix mat = ReadMemory<Matrix>(transformPtr + 0x90); 
     return Vector3(mat.m[12], mat.m[13], mat.m[14]); 
 }
@@ -85,7 +88,6 @@ void UpdateAimbot() {
     float bestDistance = 9999.0f;
     Vector3 bestEnemyPos;
 
-    // Quét địch
     for (int i = 0; i < count; i++) {
         uintptr_t entryAddr = entries + OFF_Dict_ArrayHeader + (i * OFF_Dict_EntryStride);
         uintptr_t enemyPlayer = ReadMemory<uintptr_t>(entryAddr + OFF_Dict_EntryValue);
@@ -106,11 +108,8 @@ void UpdateAimbot() {
         }
     }
 
-    // Ngắm
     if (bestTarget != 0 && bestDistance > 0.1f) {
         Vector3 dir = bestEnemyPos - myPos;
-        
-        // Dùng hàm của C thay vì M_PI để tránh lỗi thiếu define
         float pitch = -asinf(dir.y / bestDistance) * (180.0f / 3.14159265f);
         float yaw = atan2f(dir.x, dir.z) * (180.0f / 3.14159265f);
         
@@ -124,7 +123,6 @@ void UpdateAimbot() {
     }
 }
 
-// UI & Hook khởi tạo
 @interface TrungDungFFMenu : UIView
 @end
 @implementation TrungDungFFMenu
@@ -168,8 +166,20 @@ void UpdateAimbot() {
     dispatch_once(&onceToken, ^{
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             TrungDungFFMenu *menu = [[TrungDungFFMenu alloc] initWithFrame:CGRectMake(20, 100, 250, 100)];
-            UIWindow *window = [[UIApplication sharedApplication] keyWindow];
-            [window addSubview:menu];
+            
+            // FIX LỖI KEYWINDOW: Dùng vòng lặp quét window thay vì gọi keyWindow
+            UIWindow *window = nil;
+            for (UIWindow *w in [[UIApplication sharedApplication] windows]) {
+                if (w.isKeyWindow) {
+                    window = w;
+                    break;
+                }
+            }
+            
+            if (window) {
+                [window addSubview:menu];
+            }
+            
             [NSClassFromString(@"TrungDungTimer") startLoop];
         });
     });
