@@ -16,11 +16,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: List files for debugging (Tìm vị trí file .xcodeproj)
+        run: |
+          echo "=== Danh sách thư mục gốc ==="
+          ls -la
+          echo "=== Tìm kiếm file .xcodeproj tự động ==="
+          find . -name "*.xcodeproj"
+
       - name: Build Archive
         run: |
           echo "Đang tiến hành build và tạo archive cho dự án..."
-          # Nếu dự án nằm trong thư mục con, hãy thêm đường dẫn vào trước tên file .xcodeproj
-          # Ví dụ: -project ten-thu-muc-con/ThreeOneOSFive.xcodeproj
+          # Nếu kết quả debug trả về file nằm trong thư mục con, 
+          # hãy sửa lại dòng dưới thành: -project ten_thu_muc/ThreeOneOSFive.xcodeproj
           xcodebuild -project ThreeOneOSFive.xcodeproj \
                      -scheme ThreeOneOSFive \
                      -sdk iphoneos \
