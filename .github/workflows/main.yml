@@ -1,4 +1,4 @@
-name: Build Theos Tweak
+name: Build Raw Dylib
 
 on:
   push:
@@ -21,44 +21,35 @@ jobs:
           export THEOS=$HOME/theos
           mkdir -p $THEOS
           git clone --recursive https://github.com/theos/theos.git $THEOS
-          # Tải SDK iOS
           curl -L https://github.com/theos/sdks/archive/master.zip -o sdks.zip
           unzip sdks.zip -d $THEOS/sdks
           mv $THEOS/sdks/sdks-master/* $THEOS/sdks/
           rm -rf $THEOS/sdks/sdks-master sdks.zip
-          # Tải ldid (công cụ giả lập ký file)
           curl -L https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64 -o $THEOS/bin/ldid
           chmod +x $THEOS/bin/ldid
 
-      - name: Compile Tweak
+      - name: Compile Tweak (Dylib Only)
         run: |
           export THEOS=$HOME/theos
           export PATH=$THEOS/bin:$PATH
           
-          # Tạo file Makefile cơ bản nếu mày chưa có
+          # Tạo file Makefile tự động
           echo "ARCHS = arm64 arm64e" > Makefile
           echo "TARGET = iphone:clang:latest:15.0" >> Makefile
           echo "include \$(THEOS)/makefiles/common.mk" >> Makefile
           echo "TWEAK_NAME = TrungDungFF" >> Makefile
           echo "TrungDungFF_FILES = Tweak.xm" >> Makefile
           echo "TrungDungFF_FRAMEWORKS = UIKit Foundation" >> Makefile
+          echo "TrungDungFF_CFLAGS = -Wno-error -Wno-deprecated-declarations" >> Makefile
           echo "include \$(THEOS_MAKE_PATH)/tweak.mk" >> Makefile
 
-          # Tạo file Control (bắt buộc cho Theos)
-          mkdir -p layout/DEBIAN
-          echo "Package: com.trungdung.ffmenu" > layout/DEBIAN/control
-          echo "Name: TrungDungFF" >> layout/DEBIAN/control
-          echo "Version: 1.0" >> layout/DEBIAN/control
-          echo "Architecture: iphoneos-arm" >> layout/DEBIAN/control
-          echo "Description: FF Aimbot Menu" >> layout/DEBIAN/control
-          echo "Maintainer: TrungDung" >> layout/DEBIAN/control
+          # Chỉ build ra thư mục .theos (Chứa file .dylib), không package thành .deb
+          make
 
-          # Build
-          make package FINALPACKAGE=1
-
-      - name: Upload Tweak Artifact
+      - name: Upload Dylib Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Tweak-Deb
-          path: packages/*.deb
+          name: TrungDungFF-Dylib
+          # Lấy tất cả file .dylib trong thư mục build
+          path: .theos/obj/**/*.dylib
           retention-days: 7
