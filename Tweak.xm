@@ -6,20 +6,22 @@
 #include <cmath>
 #include <string.h>
 
-#define OFF_GameFacade         0xA72E4E0
-#define OFF_GameFacade_P2      0xB8
-#define OFF_BaseGame_Match     0x90
-#define OFF_Match_PlayerDict   0xC0
-#define OFF_Match_LocalPlayer  0xD8
-#define OFF_Dict_Entries       0x18
-#define OFF_Dict_Count         0x20
-#define OFF_Dict_ArrayHeader   0x20
-#define OFF_Dict_EntryStride   0x18
-#define OFF_Dict_EntryValue    0x10
-#define OFF_Player_IsDead      0x7C
-#define OFF_Player_HP          0x70
-#define OFF_Player_Rotation    0x614
-#define OFF_Bone_Head          0x6A0
+#define GameFacade                  0xA72E4E0
+#define GameFacade_P2               0xB8
+#define BaseGame_Match              0x90
+#define Match_PlayerDict            0xC0
+#define Match_LocalPlayer           0xD8
+
+#define Dict_Entries                0x18
+#define Dict_Count                  0x20
+#define Dict_ArrayHeader            0x20
+#define Dict_EntryStride            0x18
+#define Dict_EntryValue             0x10
+
+#define Player_Rotation             0x614
+#define Player_IsDead               0x7C
+#define Player_IsKnocked            0x1258
+#define Bone_Head                   0x6A0
 
 static uintptr_t g_baseAddr = 0;
 static bool aimbotEnabled = false;
@@ -43,7 +45,6 @@ T ReadMemory(uintptr_t address) {
 }
 
 struct Matrix { float m[16]; };
-
 struct Vector3 {
     float x, y, z;
     Vector3() : x(0), y(0), z(0) {}
@@ -65,21 +66,21 @@ void UpdateAimbot() {
     if (!g_baseAddr) g_baseAddr = get_base_address();
     if (!g_baseAddr) return;
 
-    uintptr_t gameFacade = ReadMemory<uintptr_t>(g_baseAddr + OFF_GameFacade);
+    uintptr_t gameFacade = ReadMemory<uintptr_t>(g_baseAddr + GameFacade);
     if (!gameFacade) return;
-    uintptr_t baseGame = ReadMemory<uintptr_t>(gameFacade + OFF_GameFacade_P2);
+    uintptr_t baseGame = ReadMemory<uintptr_t>(gameFacade + GameFacade_P2);
     if (!baseGame) return;
-    uintptr_t match = ReadMemory<uintptr_t>(baseGame + OFF_BaseGame_Match);
+    uintptr_t match = ReadMemory<uintptr_t>(baseGame + BaseGame_Match);
     if (!match) return;
-    uintptr_t localPlayer = ReadMemory<uintptr_t>(match + OFF_Match_LocalPlayer);
+    uintptr_t localPlayer = ReadMemory<uintptr_t>(match + Match_LocalPlayer);
     if (!localPlayer) return;
-    uintptr_t playerDict = ReadMemory<uintptr_t>(match + OFF_Match_PlayerDict);
+    uintptr_t playerDict = ReadMemory<uintptr_t>(match + Match_PlayerDict);
     if (!playerDict) return;
 
-    uintptr_t entries = ReadMemory<uintptr_t>(playerDict + OFF_Dict_Entries);
-    int count = ReadMemory<int>(playerDict + OFF_Dict_Count);
+    uintptr_t entries = ReadMemory<uintptr_t>(playerDict + Dict_Entries);
+    int count = ReadMemory<int>(playerDict + Dict_Count);
     
-    uintptr_t myHeadTransform = ReadMemory<uintptr_t>(localPlayer + OFF_Bone_Head);
+    uintptr_t myHeadTransform = ReadMemory<uintptr_t>(localPlayer + Bone_Head);
     if (!myHeadTransform) return;
     Vector3 myPos = GetBonePosition(myHeadTransform);
 
@@ -88,13 +89,14 @@ void UpdateAimbot() {
     Vector3 bestEnemyPos;
 
     for (int i = 0; i < count; i++) {
-        uintptr_t entryAddr = entries + OFF_Dict_ArrayHeader + (i * OFF_Dict_EntryStride);
-        uintptr_t enemyPlayer = ReadMemory<uintptr_t>(entryAddr + OFF_Dict_EntryValue);
+        uintptr_t entryAddr = entries + Dict_ArrayHeader + (i * Dict_EntryStride);
+        uintptr_t enemyPlayer = ReadMemory<uintptr_t>(entryAddr + Dict_EntryValue);
         
         if (!enemyPlayer || enemyPlayer == localPlayer) continue;
-        if (ReadMemory<bool>(enemyPlayer + OFF_Player_IsDead)) continue;
+        if (ReadMemory<bool>(enemyPlayer + Player_IsDead)) continue;
+        if (ReadMemory<bool>(enemyPlayer + Player_IsKnocked)) continue;
 
-        uintptr_t enemyHeadTransform = ReadMemory<uintptr_t>(enemyPlayer + OFF_Bone_Head);
+        uintptr_t enemyHeadTransform = ReadMemory<uintptr_t>(enemyPlayer + Bone_Head);
         if (!enemyHeadTransform) continue;
         
         Vector3 enemyPos = GetBonePosition(enemyHeadTransform);
@@ -112,7 +114,7 @@ void UpdateAimbot() {
         float pitch = -asinf(dir.y / bestDistance) * (180.0f / 3.14159265f);
         float yaw = atan2f(dir.x, dir.z) * (180.0f / 3.14159265f);
         
-        uintptr_t rotationAddr = localPlayer + OFF_Player_Rotation;
+        uintptr_t rotationAddr = localPlayer + Player_Rotation;
         
         vm_protect(mach_task_self(), rotationAddr, 8, false, VM_PROT_READ | VM_PROT_WRITE);
         float* angles = (float*)rotationAddr;
@@ -123,9 +125,8 @@ void UpdateAimbot() {
 }
 
 // ==========================================
-// GIAO DIỆN MENU CÓ NÚT NỔI TD
+// GIAO DIỆN MENU CÓ NÚT TD VÀ NÚT X
 // ==========================================
-
 @interface TrungDungMenuView : UIView
 @property (nonatomic, strong) UIView *panel;
 @property (nonatomic, strong) UIButton *toggleBtn;
@@ -136,35 +137,49 @@ void UpdateAimbot() {
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
+        // 1. Nút nổi TD
         self.toggleBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         self.toggleBtn.frame = CGRectMake(0, 0, 50, 50);
         self.toggleBtn.backgroundColor = [UIColor colorWithRed:0.8 green:0.1 blue:0.1 alpha:0.9];
         [self.toggleBtn setTitle:@"TD" forState:UIControlStateNormal];
         [self.toggleBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        self.toggleBtn.titleLabel.font = [UIFont boldSystemFontOfSize:20];
         self.toggleBtn.layer.cornerRadius = 25;
         self.toggleBtn.layer.borderWidth = 2;
         self.toggleBtn.layer.borderColor = [UIColor whiteColor].CGColor;
         [self.toggleBtn addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:self.toggleBtn];
 
-        self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, 0, 200, 100)];
-        self.panel.backgroundColor = [UIColor colorWithRed:0.1 green:0.05 blue:0.05 alpha:0.9];
+        // 2. Bảng Menu (Ẩn lúc đầu)
+        self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, 0, 220, 150)];
+        self.panel.backgroundColor = [UIColor colorWithRed:0.1 green:0.05 blue:0.05 alpha:0.95];
         self.panel.layer.cornerRadius = 10;
         self.panel.layer.borderWidth = 1;
         self.panel.layer.borderColor = [UIColor redColor].CGColor;
-        self.panel.hidden = YES;
+        self.panel.hidden = YES; 
         
-        UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(15, 15, 100, 30)];
+        // 3. Nút X (Đóng Menu) ở góc phải
+        UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        closeBtn.frame = CGRectMake(190, 5, 25, 25);
+        [closeBtn setTitle:@"X" forState:UIControlStateNormal];
+        [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
+        closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:16];
+        [closeBtn addTarget:self action:@selector(closeMenu) forControlEvents:UIControlEventTouchUpInside];
+        [self.panel addSubview:closeBtn];
+
+        // 4. Các chức năng trong Menu
+        UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(15, 40, 120, 30)];
         lbl.text = @"Aim Kill (FF)";
         lbl.textColor = [UIColor whiteColor];
         [self.panel addSubview:lbl];
         
-        UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(120, 15, 50, 30)];
+        UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(140, 40, 50, 30)];
         [sw addTarget:self action:@selector(toggleAim:) forControlEvents:UIControlEventValueChanged];
         [self.panel addSubview:sw];
         
         [self addSubview:self.panel];
 
+        // 5. Kéo thả nút TD
         UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self.toggleBtn addGestureRecognizer:pan];
     }
@@ -172,7 +187,9 @@ void UpdateAimbot() {
 }
 
 - (void)toggleMenu { self.panel.hidden = !self.panel.hidden; }
+- (void)closeMenu { self.panel.hidden = YES; }
 - (void)toggleAim:(UISwitch *)s { aimbotEnabled = s.isOn; }
+
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     CGPoint translation = [pan translationInView:self];
     self.center = CGPointMake(self.center.x + translation.x, self.center.y + translation.y);
@@ -200,23 +217,16 @@ void UpdateAimbot() {
             
             TrungDungMenuView *menu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 100, 280, 150)];
             
-            // Chỉ dùng connectedScenes, xóa sổ hàm windows cũ
             UIWindow *window = nil;
             for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
                 if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
                     for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-                        if (w.isKeyWindow) { 
-                            window = w; 
-                            break; 
-                        }
+                        if (w.isKeyWindow) { window = w; break; }
                     }
                 }
             }
             
-            if (window) {
-                [window addSubview:menu];
-            }
-            
+            if (window) { [window addSubview:menu]; }
             [NSClassFromString(@"TrungDungTimer") startLoop];
         });
     });
