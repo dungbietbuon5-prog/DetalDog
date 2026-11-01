@@ -16,19 +16,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build Archive (Auto-detect .xcodeproj path)
+      - name: Debug - Liệt kê toàn bộ thư mục và tệp
         run: |
-          echo "Đang tự động tìm file .xcodeproj trong mã nguồn..."
+          echo "=== Cấu trúc tệp trong repository ==="
+          find . -maxdepth 3 -not -path '*/.*'
+
+      - name: Build Archive (Tạm dừng nếu chưa tìm thấy project)
+        run: |
           PROJECT_PATH=$(find . -name "*.xcodeproj" -maxdepth 3 | head -n 1)
           
           if [ -z "$PROJECT_PATH" ]; then
-            echo "❌ Lỗi: Không tìm thấy file .xcodeproj nào trong repository!"
+            echo "❌ Cảnh báo: Không tìm thấy file .xcodeproj. Hãy kiểm tra lại xem bạn đã push file này lên GitHub chưa (có thể bị vướng .gitignore)."
             exit 1
           fi
           
-          echo "✅ Đã tìm thấy project tại: $PROJECT_PATH"
-          
-          # Tiến hành build dựa trên đường dẫn tìm được
           xcodebuild -project "$PROJECT_PATH" \
                      -scheme ThreeOneOSFive \
                      -sdk iphoneos \
@@ -37,9 +38,7 @@ jobs:
 
       - name: Export IPA
         run: |
-          echo "Đang cấu hình ExportOptions và xuất file IPA..."
           mkdir -p build/ExportOptions
-          
           cat << EOF > build/ExportOptions/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
