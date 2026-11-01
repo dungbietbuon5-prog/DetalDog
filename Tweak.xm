@@ -26,6 +26,7 @@
 #define Player_Armor                0x74
 #define Player_IsDead               0x7C
 #define Player_IsKnocked            0x1258
+#define Player_IsKnockedFrozen      0xB0  // <-- Dòng bị thiếu đã được thêm vào đây
 #define Player_Name                 0x490
 #define Player_FOVOffset            0x84
 #define Player_IsFiring             0x848
@@ -98,19 +99,6 @@ Vector3 GetBonePosition(uintptr_t transformPtr) {
     if (!transformPtr) return Vector3();
     Matrix mat = ReadMemory<Matrix>(transformPtr + 0x90); 
     return Vector3(mat.m[12], mat.m[13], mat.m[14]); 
-}
-
-// Hàm chuyển đổi World to Screen (Dùng để vẽ ESP)
-bool WorldToScreen(Vector3 worldPos, Vector3* screenPos, Matrix viewMatrix, float screenWidth, float screenHeight) {
-    float w = viewMatrix.m[3] * worldPos.x + viewMatrix.m[7] * worldPos.y + viewMatrix.m[11] * worldPos.z + viewMatrix.m[15];
-    if (w < 0.01f) return false;
-    
-    float x = viewMatrix.m[0] * worldPos.x + viewMatrix.m[4] * worldPos.y + viewMatrix.m[8] * worldPos.z + viewMatrix.m[12];
-    float y = viewMatrix.m[1] * worldPos.x + viewMatrix.m[5] * worldPos.y + viewMatrix.m[9] * worldPos.z + viewMatrix.m[13];
-    
-    screenPos->x = (screenWidth / 2.0f) * (1.0f + x / w);
-    screenPos->y = (screenHeight / 2.0f) * (1.0f - y / w);
-    return true;
 }
 
 // ==========================================
@@ -204,11 +192,6 @@ void UpdateGame() {
             }
         }
     }
-
-    // ESP (Cập nhật vị trí địch lên UI)
-    if (espEnabled) {
-        // Phần này sẽ được xử lý bởi View ESP riêng (xem bên dưới)
-    }
 }
 
 // ==========================================
@@ -256,7 +239,6 @@ static id sharedMenu = nil;
         [self addSwitch:@"Fast Fire" yPos:175 action:@selector(toggleFastFire:)];
         [self addSwitch:@"FOV 120" yPos:220 action:@selector(toggleFov:)];
         [self addSwitch:@"Freeze Enemy" yPos:265 action:@selector(toggleFreeze:)];
-        [self addSwitch:@"ESP (Vẽ Khung)" yPos:310 action:@selector(toggleEsp:)];
 
         [self addSubview:self.panel];
 
@@ -288,7 +270,6 @@ static id sharedMenu = nil;
 - (void)toggleFastFire:(UISwitch *)s { fastFire = s.isOn; }
 - (void)toggleFov:(UISwitch *)s { fovHack = s.isOn; }
 - (void)toggleFreeze:(UISwitch *)s { freezeEnemy = s.isOn; }
-- (void)toggleEsp:(UISwitch *)s { espEnabled = s.isOn; }
 
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     CGPoint translation = [pan translationInView:self];
