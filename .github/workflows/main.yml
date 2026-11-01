@@ -16,19 +16,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: List files for debugging (Tìm vị trí file .xcodeproj)
+      - name: Build Archive (Auto-detect .xcodeproj path)
         run: |
-          echo "=== Danh sách thư mục gốc ==="
-          ls -la
-          echo "=== Tìm kiếm file .xcodeproj tự động ==="
-          find . -name "*.xcodeproj"
-
-      - name: Build Archive
-        run: |
-          echo "Đang tiến hành build và tạo archive cho dự án..."
-          # Nếu kết quả debug trả về file nằm trong thư mục con, 
-          # hãy sửa lại dòng dưới thành: -project ten_thu_muc/ThreeOneOSFive.xcodeproj
-          xcodebuild -project ThreeOneOSFive.xcodeproj \
+          echo "Đang tự động tìm file .xcodeproj trong mã nguồn..."
+          PROJECT_PATH=$(find . -name "*.xcodeproj" -maxdepth 3 | head -n 1)
+          
+          if [ -z "$PROJECT_PATH" ]; then
+            echo "❌ Lỗi: Không tìm thấy file .xcodeproj nào trong repository!"
+            exit 1
+          fi
+          
+          echo "✅ Đã tìm thấy project tại: $PROJECT_PATH"
+          
+          # Tiến hành build dựa trên đường dẫn tìm được
+          xcodebuild -project "$PROJECT_PATH" \
                      -scheme ThreeOneOSFive \
                      -sdk iphoneos \
                      -configuration Release \
