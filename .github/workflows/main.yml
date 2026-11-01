@@ -19,6 +19,8 @@ jobs:
       - name: Build Archive
         run: |
           echo "Đang tiến hành build và tạo archive cho dự án..."
+          # Nếu dự án nằm trong thư mục con, hãy thêm đường dẫn vào trước tên file .xcodeproj
+          # Ví dụ: -project ten-thu-muc-con/ThreeOneOSFive.xcodeproj
           xcodebuild -project ThreeOneOSFive.xcodeproj \
                      -scheme ThreeOneOSFive \
                      -sdk iphoneos \
