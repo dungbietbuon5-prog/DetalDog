@@ -1,66 +1,64 @@
-name: Build iOS IPA
+name: Build Theos Tweak
 
 on:
   push:
-    branches: [ "main", "master" ]
-  pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build and Package IPA
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Debug - Liệt kê toàn bộ thư mục và tệp
-        run: |
-          echo "=== Cấu trúc tệp trong repository ==="
-          find . -maxdepth 3 -not -path '*/.*'
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
 
-      - name: Build Archive (Tạm dừng nếu chưa tìm thấy project)
+      - name: Install Theos
         run: |
-          PROJECT_PATH=$(find . -name "*.xcodeproj" -maxdepth 3 | head -n 1)
+          export THEOS=$HOME/theos
+          mkdir -p $THEOS
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          # Tải SDK iOS
+          curl -L https://github.com/theos/sdks/archive/master.zip -o sdks.zip
+          unzip sdks.zip -d $THEOS/sdks
+          mv $THEOS/sdks/sdks-master/* $THEOS/sdks/
+          rm -rf $THEOS/sdks/sdks-master sdks.zip
+          # Tải ldid (công cụ giả lập ký file)
+          curl -L https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64 -o $THEOS/bin/ldid
+          chmod +x $THEOS/bin/ldid
+
+      - name: Compile Tweak
+        run: |
+          export THEOS=$HOME/theos
+          export PATH=$THEOS/bin:$PATH
           
-          if [ -z "$PROJECT_PATH" ]; then
-            echo "❌ Cảnh báo: Không tìm thấy file .xcodeproj. Hãy kiểm tra lại xem bạn đã push file này lên GitHub chưa (có thể bị vướng .gitignore)."
-            exit 1
-          fi
-          
-          xcodebuild -project "$PROJECT_PATH" \
-                     -scheme ThreeOneOSFive \
-                     -sdk iphoneos \
-                     -configuration Release \
-                     clean archive -archivePath build/ThreeOneOSFive.xcarchive
+          # Tạo file Makefile cơ bản nếu mày chưa có
+          echo "ARCHS = arm64 arm64e" > Makefile
+          echo "TARGET = iphone:clang:latest:15.0" >> Makefile
+          echo "include \$(THEOS)/makefiles/common.mk" >> Makefile
+          echo "TWEAK_NAME = TrungDungFF" >> Makefile
+          echo "TrungDungFF_FILES = Tweak.xm" >> Makefile
+          echo "TrungDungFF_FRAMEWORKS = UIKit Foundation" >> Makefile
+          echo "include \$(THEOS_MAKE_PATH)/tweak.mk" >> Makefile
 
-      - name: Export IPA
-        run: |
-          mkdir -p build/ExportOptions
-          cat << EOF > build/ExportOptions/ExportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>development</string>
-              <key>compileBitcode</key>
-              <false/>
-              <key>uploadBitcode</key>
-              <false/>
-          </dict>
-          </plist>
-          EOF
+          # Tạo file Control (bắt buộc cho Theos)
+          mkdir -p layout/DEBIAN
+          echo "Package: com.trungdung.ffmenu" > layout/DEBIAN/control
+          echo "Name: TrungDungFF" >> layout/DEBIAN/control
+          echo "Version: 1.0" >> layout/DEBIAN/control
+          echo "Architecture: iphoneos-arm" >> layout/DEBIAN/control
+          echo "Description: FF Aimbot Menu" >> layout/DEBIAN/control
+          echo "Maintainer: TrungDung" >> layout/DEBIAN/control
 
-          xcodebuild -exportArchive \
-                     -archivePath build/ThreeOneOSFive.xcarchive \
-                     -exportPath build/IPA \
-                     -exportOptionsPlist build/ExportOptions/ExportOptions.plist
+          # Build
+          make package FINALPACKAGE=1
 
-      - name: Upload IPA artifact
+      - name: Upload Tweak Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThreeOneOSFive-IPA
-          path: build/IPA/*.ipa
+          name: Tweak-Deb
+          path: packages/*.deb
+          retention-days: 7
