@@ -17,39 +17,40 @@ jobs:
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
 
-      - name: Show Xcode version
-        run: xcodebuild -version
-
-      - name: Auto-detect Project/Workspace and Scheme
+      - name: Auto-detect Project/Workspace
         id: detect
         run: |
           echo "Finding workspace or project..."
-          if ls *.xcworkspace >/dev/null 2>&1; then
+          # Tìm file .xcworkspace trước, nếu không có thì tìm .xcodeproj
+          WORKSPACE_FILE=$(find . -name "*.xcworkspace" -not -path "*/.*" | head -n 1)
+          PROJECT_FILE=$(find . -name "*.xcodeproj" -not -path "*/.*" | head -n 1)
+          
+          if [ -n "$WORKSPACE_FILE" ]; then
             echo "TARGET_TYPE=workspace" >> $GITHUB_OUTPUT
-            echo "TARGET_NAME=$(basename *.xcworkspace)" >> $GITHUB_OUTPUT
-          elif ls *.xcodeproj >/dev/null 2>&1; then
+            echo "TARGET_PATH=$WORKSPACE_FILE" >> $GITHUB_OUTPUT
+            SCHEME_NAME=$(basename "$WORKSPACE_FILE" .xcworkspace)
+          elif [ -n "$PROJECT_FILE" ]; then
             echo "TARGET_TYPE=project" >> $GITHUB_OUTPUT
-            echo "TARGET_NAME=$(basename *.xcodeproj)" >> $GITHUB_OUTPUT
+            echo "TARGET_PATH=$PROJECT_FILE" >> $GITHUB_OUTPUT
+            SCHEME_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
           else
-            echo "Không tìm thấy file .xcodeproj hoặc .xcworkspace trong thư mục gốc!"
+            echo "LỖI: Không tìm thấy file .xcodeproj hoặc .xcworkspace ở BẤT KỲ đâu trong repo!"
             exit 1
           fi
           
-          # Lấy tên Scheme (thường trùng tên project)
-          SCHEME_NAME=$(basename ${{ steps.detect.outputs.TARGET_NAME }} .xcodeproj)
-          SCHEME_NAME=$(basename $SCHEME_NAME .xcworkspace)
           echo "SCHEME_NAME=$SCHEME_NAME" >> $GITHUB_OUTPUT
 
       - name: Build and Archive App
         run: |
           TARGET_FLAG="-${{ steps.detect.outputs.TARGET_TYPE }}"
-          TARGET_FILE="${{ steps.detect.outputs.TARGET_NAME }}"
+          TARGET_PATH="${{ steps.detect.outputs.TARGET_PATH }}"
+          SCHEME_NAME="${{ steps.detect.outputs.SCHEME_NAME }}"
           
-          echo "Đang build $TARGET_FLAG $TARGET_FILE với scheme ${{ steps.detect.outputs.SCHEME_NAME }}"
+          echo "Đang build $TARGET_FLAG $TARGET_PATH với scheme $SCHEME_NAME"
           
           xcodebuild clean archive \
-            $TARGET_FLAG "$TARGET_FILE" \
-            -scheme "${{ steps.detect.outputs.SCHEME_NAME }}" \
+            $TARGET_FLAG "$TARGET_PATH" \
+            -scheme "$SCHEME_NAME" \
             -sdk iphoneos \
             -configuration Release \
             -archivePath $PWD/build/App.xcarchive \
