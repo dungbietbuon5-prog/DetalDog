@@ -6,7 +6,7 @@
 #include <cmath>
 #include <string.h>
 
-// --- OFFSETS CƠ BẢN ---
+// --- OFFSETS ---
 #define GameFacade                  0xA72E4E0
 #define GameFacade_P2               0xB8
 #define BaseGame_Match              0x90
@@ -27,13 +27,9 @@
 #define Weapon_Recoil               0x18
 
 static uintptr_t g_baseAddr = 0;
-
-// --- TRẠNG THÁI TÍNH NĂNG ---
 static bool aimbotEnabled = false;
-static bool espEnabled = false;
 static bool noRecoilEnabled = false;
 
-// --- HÀM TIỆN ÍCH ---
 uintptr_t get_base_address() {
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
         const char *name = _dyld_get_image_name(i);
@@ -69,7 +65,6 @@ Vector3 GetBonePosition(uintptr_t transformPtr) {
     return Vector3(mat.m[12], mat.m[13], mat.m[14]); 
 }
 
-// --- LOGIC HOẠT ĐỘNG ---
 void UpdateAimbot() {
     if (!aimbotEnabled) return;
     if (!g_baseAddr) g_baseAddr = get_base_address();
@@ -157,10 +152,11 @@ void UpdateNoRecoil() {
     vm_protect(mach_task_self(), recoilAddr, 4, false, VM_PROT_READ);
 }
 
+// ==========================================
+// GIAO DIỆN MENU
+// ==========================================
+static id sharedMenu = nil; // Giữ tham chiếu để không bị xóa
 
-// ==========================================
-// GIAO DIỆN MENU CÓ NÚT TD VÀ NÚT X
-// ==========================================
 @interface TrungDungMenuView : UIView
 @property (nonatomic, strong) UIView *panel;
 @property (nonatomic, strong) UIButton *toggleBtn;
@@ -171,7 +167,9 @@ void UpdateNoRecoil() {
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        // 1. Nút nổi TD
+        self.backgroundColor = [UIColor clearColor];
+        
+        // Nút nổi TD
         self.toggleBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         self.toggleBtn.frame = CGRectMake(0, 0, 50, 50);
         self.toggleBtn.backgroundColor = [UIColor colorWithRed:0.8 green:0.1 blue:0.1 alpha:0.9];
@@ -184,7 +182,7 @@ void UpdateNoRecoil() {
         [self.toggleBtn addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:self.toggleBtn];
 
-        // 2. Bảng Menu (Ẩn lúc đầu)
+        // Bảng Menu
         self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, -20, 220, 180)];
         self.panel.backgroundColor = [UIColor colorWithRed:0.1 green:0.05 blue:0.05 alpha:0.95];
         self.panel.layer.cornerRadius = 10;
@@ -192,7 +190,7 @@ void UpdateNoRecoil() {
         self.panel.layer.borderColor = [UIColor redColor].CGColor;
         self.panel.hidden = YES; 
         
-        // 3. Nút X (Đóng Menu) ở góc phải
+        // Nút X
         UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         closeBtn.frame = CGRectMake(190, 5, 25, 25);
         [closeBtn setTitle:@"X" forState:UIControlStateNormal];
@@ -201,13 +199,11 @@ void UpdateNoRecoil() {
         [closeBtn addTarget:self action:@selector(closeMenu) forControlEvents:UIControlEventTouchUpInside];
         [self.panel addSubview:closeBtn];
 
-        // 4. Các chức năng trong Menu
         // Aim Kill
         UILabel *lblAim = [[UILabel alloc] initWithFrame:CGRectMake(15, 40, 120, 30)];
         lblAim.text = @"Aim Kill";
         lblAim.textColor = [UIColor whiteColor];
         [self.panel addSubview:lblAim];
-        
         UISwitch *swAim = [[UISwitch alloc] initWithFrame:CGRectMake(140, 40, 50, 30)];
         [swAim addTarget:self action:@selector(toggleAim:) forControlEvents:UIControlEventValueChanged];
         [self.panel addSubview:swAim];
@@ -217,24 +213,12 @@ void UpdateNoRecoil() {
         lblRecoil.text = @"No Recoil";
         lblRecoil.textColor = [UIColor whiteColor];
         [self.panel addSubview:lblRecoil];
-        
         UISwitch *swRecoil = [[UISwitch alloc] initWithFrame:CGRectMake(140, 90, 50, 30)];
         [swRecoil addTarget:self action:@selector(toggleRecoil:) forControlEvents:UIControlEventValueChanged];
         [self.panel addSubview:swRecoil];
-
-        // ESP (Placeholder)
-        UILabel *lblEsp = [[UILabel alloc] initWithFrame:CGRectMake(15, 140, 120, 30)];
-        lblEsp.text = @"ESP (Coming)";
-        lblEsp.textColor = [UIColor grayColor];
-        [self.panel addSubview:lblEsp];
-        
-        UISwitch *swEsp = [[UISwitch alloc] initWithFrame:CGRectMake(140, 140, 50, 30)];
-        swEsp.enabled = NO;
-        [self.panel addSubview:swEsp];
         
         [self addSubview:self.panel];
 
-        // 5. Kéo thả nút TD
         UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
         [self.toggleBtn addGestureRecognizer:pan];
     }
@@ -254,7 +238,7 @@ void UpdateNoRecoil() {
 @end
 
 // ==========================================
-// VÒNG LẶP & KHỞI TẠO TỰ ĐỘNG
+// KHỞI TẠO TỰ ĐỘNG
 // ==========================================
 @interface TrungDungTimer : NSObject
 + (void)startLoop;
@@ -268,26 +252,32 @@ void UpdateNoRecoil() {
 }
 @end
 
-// Hàm tự chạy khi inject dylib (Không cần CydiaSubstrate)
 __attribute__((constructor))
 static void initialize_menu() {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         
-        TrungDungMenuView *menu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 100, 280, 200)];
+        sharedMenu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 100, 280, 200)];
         
-        UIWindow *window = nil;
+        UIWindow *keyWindow = nil;
         for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
                 for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-                    if (w.isKeyWindow) { window = w; break; }
+                    if (w.isKeyWindow) { 
+                        keyWindow = w; 
+                        break; 
+                    }
                 }
             }
         }
         
-        if (window) {
-            [window addSubview:menu];
+        if (!keyWindow) {
+            keyWindow = [[UIApplication sharedApplication] windows].firstObject;
         }
         
-        [NSClassFromString(@"TrungDungTimer") startLoop];
+        if (keyWindow) {
+            [keyWindow addSubview:sharedMenu];
+            [keyWindow bringSubviewToFront:sharedMenu];
+            [NSClassFromString(@"TrungDungTimer") startLoop];
+        }
     });
 }
