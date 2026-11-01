@@ -6,7 +6,9 @@
 #include <cmath>
 #include <string.h>
 
-// --- OFFSETS ---
+// ==========================================
+// TOÀN BỘ OFFSET
+// ==========================================
 #define GameFacade                  0xA72E4E0
 #define GameFacade_P2               0xB8
 #define BaseGame_Match              0x90
@@ -20,16 +22,42 @@
 #define Dict_EntryValue             0x10
 
 #define Player_Rotation             0x614
+#define Player_HP                   0x70
+#define Player_Armor                0x74
 #define Player_IsDead               0x7C
 #define Player_IsKnocked            0x1258
-#define Bone_Head                   0x6A0
+#define Player_Name                 0x490
+#define Player_FOVOffset            0x84
+#define Player_IsFiring             0x848
 #define Player_Weapon               0x600
 #define Weapon_Recoil               0x18
 
-static uintptr_t g_baseAddr = 0;
-static bool aimbotEnabled = false;
-static bool noRecoilEnabled = false;
+// Bones
+#define Bone_Head                   0x6A0
+#define Bone_Hip                    0x6A8
+#define Bone_Breast                 0x6B0
+#define Bone_Root                   0x6C8
+#define Bone_LeftHand               0x720
+#define Bone_RightHand              0x718
+#define Bone_LeftFoot               0x6D8
+#define Bone_RightFoot              0x6E0
 
+static uintptr_t g_baseAddr = 0;
+
+// ==========================================
+// BIẾN TRẠNG THÁI
+// ==========================================
+static bool aimHead = false;
+static bool aimNeck = false;
+static bool noRecoil = false;
+static bool fastFire = false;
+static bool fovHack = false;
+static bool freezeEnemy = false;
+static bool espEnabled = false;
+
+// ==========================================
+// HÀM TIỆN ÍCH
+// ==========================================
 uintptr_t get_base_address() {
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
         const char *name = _dyld_get_image_name(i);
@@ -46,6 +74,13 @@ T ReadMemory(uintptr_t address) {
     memset(&empty_val, 0, sizeof(T));
     if (address < 0x100000000 || address > 0x7FFFFFFFFFFF) return empty_val;
     return *(T*)(address);
+}
+
+void WriteMemory(uintptr_t address, void* value, size_t size) {
+    if (address < 0x100000000 || address > 0x7FFFFFFFFFFF) return;
+    vm_protect(mach_task_self(), address, size, false, VM_PROT_READ | VM_PROT_WRITE);
+    memcpy((void*)address, value, size);
+    vm_protect(mach_task_self(), address, size, false, VM_PROT_READ);
 }
 
 struct Matrix { float m[16]; };
@@ -65,8 +100,23 @@ Vector3 GetBonePosition(uintptr_t transformPtr) {
     return Vector3(mat.m[12], mat.m[13], mat.m[14]); 
 }
 
-void UpdateAimbot() {
-    if (!aimbotEnabled) return;
+// Hàm chuyển đổi World to Screen (Dùng để vẽ ESP)
+bool WorldToScreen(Vector3 worldPos, Vector3* screenPos, Matrix viewMatrix, float screenWidth, float screenHeight) {
+    float w = viewMatrix.m[3] * worldPos.x + viewMatrix.m[7] * worldPos.y + viewMatrix.m[11] * worldPos.z + viewMatrix.m[15];
+    if (w < 0.01f) return false;
+    
+    float x = viewMatrix.m[0] * worldPos.x + viewMatrix.m[4] * worldPos.y + viewMatrix.m[8] * worldPos.z + viewMatrix.m[12];
+    float y = viewMatrix.m[1] * worldPos.x + viewMatrix.m[5] * worldPos.y + viewMatrix.m[9] * worldPos.z + viewMatrix.m[13];
+    
+    screenPos->x = (screenWidth / 2.0f) * (1.0f + x / w);
+    screenPos->y = (screenHeight / 2.0f) * (1.0f - y / w);
+    return true;
+}
+
+// ==========================================
+// LOGIC GAME
+// ==========================================
+void UpdateGame() {
     if (!g_baseAddr) g_baseAddr = get_base_address();
     if (!g_baseAddr) return;
 
@@ -78,84 +128,93 @@ void UpdateAimbot() {
     if (!match) return;
     uintptr_t localPlayer = ReadMemory<uintptr_t>(match + Match_LocalPlayer);
     if (!localPlayer) return;
-    uintptr_t playerDict = ReadMemory<uintptr_t>(match + Match_PlayerDict);
-    if (!playerDict) return;
 
+    uintptr_t playerDict = ReadMemory<uintptr_t>(match + Match_PlayerDict);
     uintptr_t entries = ReadMemory<uintptr_t>(playerDict + Dict_Entries);
     int count = ReadMemory<int>(playerDict + Dict_Count);
-    
-    uintptr_t myHeadTransform = ReadMemory<uintptr_t>(localPlayer + Bone_Head);
-    if (!myHeadTransform) return;
-    Vector3 myPos = GetBonePosition(myHeadTransform);
 
-    uintptr_t bestTarget = 0;
-    float bestDistance = 9999.0f;
-    Vector3 bestEnemyPos;
+    uintptr_t myBoneTF = ReadMemory<uintptr_t>(localPlayer + Bone_Head);
+    Vector3 myPos = GetBonePosition(myBoneTF);
 
-    for (int i = 0; i < count; i++) {
-        uintptr_t entryAddr = entries + Dict_ArrayHeader + (i * Dict_EntryStride);
-        uintptr_t enemyPlayer = ReadMemory<uintptr_t>(entryAddr + Dict_EntryValue);
-        
-        if (!enemyPlayer || enemyPlayer == localPlayer) continue;
-        if (ReadMemory<bool>(enemyPlayer + Player_IsDead)) continue;
-        if (ReadMemory<bool>(enemyPlayer + Player_IsKnocked)) continue;
+    // AIMBOT
+    if (aimHead || aimNeck) {
+        uintptr_t bestTarget = 0;
+        float bestDist = 9999.0f;
+        Vector3 bestEnemyPos;
 
-        uintptr_t enemyHeadTransform = ReadMemory<uintptr_t>(enemyPlayer + Bone_Head);
-        if (!enemyHeadTransform) continue;
-        
-        Vector3 enemyPos = GetBonePosition(enemyHeadTransform);
-        float dist = myPos.distance(enemyPos);
-        
-        if (dist < bestDistance) {
-            bestDistance = dist;
-            bestTarget = enemyPlayer;
-            bestEnemyPos = enemyPos;
+        for (int i = 0; i < count; i++) {
+            uintptr_t entryAddr = entries + Dict_ArrayHeader + (i * Dict_EntryStride);
+            uintptr_t enemy = ReadMemory<uintptr_t>(entryAddr + Dict_EntryValue);
+            
+            if (!enemy || enemy == localPlayer) continue;
+            if (ReadMemory<bool>(enemy + Player_IsDead)) continue;
+            if (ReadMemory<bool>(enemy + Player_IsKnocked)) continue;
+
+            uintptr_t enemyBoneTF = ReadMemory<uintptr_t>(enemy + (aimHead ? Bone_Head : Bone_Breast));
+            if (!enemyBoneTF) continue;
+            
+            Vector3 enemyPos = GetBonePosition(enemyBoneTF);
+            float dist = myPos.distance(enemyPos);
+            
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestTarget = enemy;
+                bestEnemyPos = enemyPos;
+            }
+        }
+
+        if (bestTarget != 0 && bestDist > 0.1f) {
+            Vector3 dir = bestEnemyPos - myPos;
+            float pitch = -asinf(dir.y / bestDist) * (180.0f / 3.14159265f);
+            float yaw = atan2f(dir.x, dir.z) * (180.0f / 3.14159265f);
+            float angles[2] = {pitch, yaw};
+            WriteMemory(localPlayer + Player_Rotation, angles, 8);
         }
     }
 
-    if (bestTarget != 0 && bestDistance > 0.1f) {
-        Vector3 dir = bestEnemyPos - myPos;
-        float pitch = -asinf(dir.y / bestDistance) * (180.0f / 3.14159265f);
-        float yaw = atan2f(dir.x, dir.z) * (180.0f / 3.14159265f);
-        
-        uintptr_t rotationAddr = localPlayer + Player_Rotation;
-        
-        vm_protect(mach_task_self(), rotationAddr, 8, false, VM_PROT_READ | VM_PROT_WRITE);
-        float* angles = (float*)rotationAddr;
-        angles[0] = pitch;
-        angles[1] = yaw;
-        vm_protect(mach_task_self(), rotationAddr, 8, false, VM_PROT_READ);
+    // NO RECOIL
+    if (noRecoil) {
+        uintptr_t weaponPtr = ReadMemory<uintptr_t>(localPlayer + Player_Weapon);
+        if (weaponPtr) {
+            float zero = 0.0f;
+            WriteMemory(weaponPtr + Weapon_Recoil, &zero, 4);
+        }
     }
-}
 
-void UpdateNoRecoil() {
-    if (!noRecoilEnabled) return;
-    if (!g_baseAddr) g_baseAddr = get_base_address();
-    if (!g_baseAddr) return;
+    // FAST FIRE
+    if (fastFire) {
+        bool firing = true;
+        WriteMemory(localPlayer + Player_IsFiring, &firing, 1);
+    }
 
-    uintptr_t gameFacade = ReadMemory<uintptr_t>(g_baseAddr + GameFacade);
-    if (!gameFacade) return;
-    uintptr_t baseGame = ReadMemory<uintptr_t>(gameFacade + GameFacade_P2);
-    if (!baseGame) return;
-    uintptr_t match = ReadMemory<uintptr_t>(baseGame + BaseGame_Match);
-    if (!match) return;
-    uintptr_t localPlayer = ReadMemory<uintptr_t>(match + Match_LocalPlayer);
-    if (!localPlayer) return;
+    // FOV
+    if (fovHack) {
+        float fov = 120.0f;
+        WriteMemory(localPlayer + Player_FOVOffset, &fov, 4);
+    }
 
-    uintptr_t weaponPtr = ReadMemory<uintptr_t>(localPlayer + Player_Weapon);
-    if (!weaponPtr) return;
-    
-    uintptr_t recoilAddr = weaponPtr + Weapon_Recoil;
-    vm_protect(mach_task_self(), recoilAddr, 4, false, VM_PROT_READ | VM_PROT_WRITE);
-    float* recoil = (float*)recoilAddr;
-    *recoil = 0.0f;
-    vm_protect(mach_task_self(), recoilAddr, 4, false, VM_PROT_READ);
+    // FREEZE ENEMY
+    if (freezeEnemy) {
+        for (int i = 0; i < count; i++) {
+            uintptr_t entryAddr = entries + Dict_ArrayHeader + (i * Dict_EntryStride);
+            uintptr_t enemy = ReadMemory<uintptr_t>(entryAddr + Dict_EntryValue);
+            if (enemy && enemy != localPlayer) {
+                bool freeze = true;
+                WriteMemory(enemy + Player_IsKnockedFrozen, &freeze, 1);
+            }
+        }
+    }
+
+    // ESP (Cập nhật vị trí địch lên UI)
+    if (espEnabled) {
+        // Phần này sẽ được xử lý bởi View ESP riêng (xem bên dưới)
+    }
 }
 
 // ==========================================
 // GIAO DIỆN MENU
 // ==========================================
-static id sharedMenu = nil; // Giữ tham chiếu để không bị xóa
+static id sharedMenu = nil;
 
 @interface TrungDungMenuView : UIView
 @property (nonatomic, strong) UIView *panel;
@@ -163,60 +222,42 @@ static id sharedMenu = nil; // Giữ tham chiếu để không bị xóa
 @end
 
 @implementation TrungDungMenuView
-
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
         self.backgroundColor = [UIColor clearColor];
         
-        // Nút nổi TD
         self.toggleBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         self.toggleBtn.frame = CGRectMake(0, 0, 50, 50);
         self.toggleBtn.backgroundColor = [UIColor colorWithRed:0.8 green:0.1 blue:0.1 alpha:0.9];
         [self.toggleBtn setTitle:@"TD" forState:UIControlStateNormal];
-        [self.toggleBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         self.toggleBtn.titleLabel.font = [UIFont boldSystemFontOfSize:20];
         self.toggleBtn.layer.cornerRadius = 25;
-        self.toggleBtn.layer.borderWidth = 2;
-        self.toggleBtn.layer.borderColor = [UIColor whiteColor].CGColor;
         [self.toggleBtn addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:self.toggleBtn];
 
-        // Bảng Menu
-        self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, -20, 220, 180)];
+        self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, -150, 220, 420)];
         self.panel.backgroundColor = [UIColor colorWithRed:0.1 green:0.05 blue:0.05 alpha:0.95];
         self.panel.layer.cornerRadius = 10;
         self.panel.layer.borderWidth = 1;
         self.panel.layer.borderColor = [UIColor redColor].CGColor;
         self.panel.hidden = YES; 
         
-        // Nút X
         UIButton *closeBtn = [UIButton buttonWithType:UIButtonTypeCustom];
         closeBtn.frame = CGRectMake(190, 5, 25, 25);
         [closeBtn setTitle:@"X" forState:UIControlStateNormal];
         [closeBtn setTitleColor:[UIColor redColor] forState:UIControlStateNormal];
-        closeBtn.titleLabel.font = [UIFont boldSystemFontOfSize:16];
         [closeBtn addTarget:self action:@selector(closeMenu) forControlEvents:UIControlEventTouchUpInside];
         [self.panel addSubview:closeBtn];
 
-        // Aim Kill
-        UILabel *lblAim = [[UILabel alloc] initWithFrame:CGRectMake(15, 40, 120, 30)];
-        lblAim.text = @"Aim Kill";
-        lblAim.textColor = [UIColor whiteColor];
-        [self.panel addSubview:lblAim];
-        UISwitch *swAim = [[UISwitch alloc] initWithFrame:CGRectMake(140, 40, 50, 30)];
-        [swAim addTarget:self action:@selector(toggleAim:) forControlEvents:UIControlEventValueChanged];
-        [self.panel addSubview:swAim];
+        [self addSwitch:@"Aim Head" yPos:40 action:@selector(toggleAimHead:)];
+        [self addSwitch:@"Aim Neck" yPos:85 action:@selector(toggleAimNeck:)];
+        [self addSwitch:@"No Recoil" yPos:130 action:@selector(toggleRecoil:)];
+        [self addSwitch:@"Fast Fire" yPos:175 action:@selector(toggleFastFire:)];
+        [self addSwitch:@"FOV 120" yPos:220 action:@selector(toggleFov:)];
+        [self addSwitch:@"Freeze Enemy" yPos:265 action:@selector(toggleFreeze:)];
+        [self addSwitch:@"ESP (Vẽ Khung)" yPos:310 action:@selector(toggleEsp:)];
 
-        // No Recoil
-        UILabel *lblRecoil = [[UILabel alloc] initWithFrame:CGRectMake(15, 90, 120, 30)];
-        lblRecoil.text = @"No Recoil";
-        lblRecoil.textColor = [UIColor whiteColor];
-        [self.panel addSubview:lblRecoil];
-        UISwitch *swRecoil = [[UISwitch alloc] initWithFrame:CGRectMake(140, 90, 50, 30)];
-        [swRecoil addTarget:self action:@selector(toggleRecoil:) forControlEvents:UIControlEventValueChanged];
-        [self.panel addSubview:swRecoil];
-        
         [self addSubview:self.panel];
 
         UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
@@ -225,10 +266,29 @@ static id sharedMenu = nil; // Giữ tham chiếu để không bị xóa
     return self;
 }
 
+- (void)addSwitch:(NSString *)title yPos:(CGFloat)y action:(SEL)action {
+    UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(15, y, 130, 30)];
+    lbl.text = title;
+    lbl.textColor = [UIColor whiteColor];
+    lbl.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    [self.panel addSubview:lbl];
+    
+    UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(145, y, 50, 30)];
+    sw.transform = CGAffineTransformMakeScale(0.8, 0.8);
+    [sw addTarget:self action:action forControlEvents:UIControlEventValueChanged];
+    [self.panel addSubview:sw];
+}
+
 - (void)toggleMenu { self.panel.hidden = !self.panel.hidden; }
 - (void)closeMenu { self.panel.hidden = YES; }
-- (void)toggleAim:(UISwitch *)s { aimbotEnabled = s.isOn; }
-- (void)toggleRecoil:(UISwitch *)s { noRecoilEnabled = s.isOn; }
+
+- (void)toggleAimHead:(UISwitch *)s { aimHead = s.isOn; if(s.isOn) aimNeck = NO; }
+- (void)toggleAimNeck:(UISwitch *)s { aimNeck = s.isOn; if(s.isOn) aimHead = NO; }
+- (void)toggleRecoil:(UISwitch *)s { noRecoil = s.isOn; }
+- (void)toggleFastFire:(UISwitch *)s { fastFire = s.isOn; }
+- (void)toggleFov:(UISwitch *)s { fovHack = s.isOn; }
+- (void)toggleFreeze:(UISwitch *)s { freezeEnemy = s.isOn; }
+- (void)toggleEsp:(UISwitch *)s { espEnabled = s.isOn; }
 
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     CGPoint translation = [pan translationInView:self];
@@ -238,7 +298,7 @@ static id sharedMenu = nil; // Giữ tham chiếu để không bị xóa
 @end
 
 // ==========================================
-// KHỞI TẠO TỰ ĐỘNG
+// VÒNG LẶP & KHỞI TẠO
 // ==========================================
 @interface TrungDungTimer : NSObject
 + (void)startLoop;
@@ -246,38 +306,34 @@ static id sharedMenu = nil; // Giữ tham chiếu để không bị xóa
 @implementation TrungDungTimer
 + (void)startLoop {
     [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer * _Nonnull timer) {
-        UpdateAimbot();
-        UpdateNoRecoil();
+        UpdateGame();
     }];
 }
 @end
 
 __attribute__((constructor))
 static void initialize_menu() {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        
-        sharedMenu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 100, 280, 200)];
+    [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer * _Nonnull timer) {
+        if (!sharedMenu) {
+            sharedMenu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 150, 280, 220)];
+            [NSClassFromString(@"TrungDungTimer") startLoop];
+        }
         
         UIWindow *keyWindow = nil;
         for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
             if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
                 for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-                    if (w.isKeyWindow) { 
-                        keyWindow = w; 
-                        break; 
-                    }
+                    if (w.isKeyWindow) { keyWindow = w; break; }
                 }
             }
         }
         
-        if (!keyWindow) {
-            keyWindow = [[UIApplication sharedApplication] windows].firstObject;
-        }
-        
         if (keyWindow) {
-            [keyWindow addSubview:sharedMenu];
-            [keyWindow bringSubviewToFront:sharedMenu];
-            [NSClassFromString(@"TrungDungTimer") startLoop];
+            if ([sharedMenu superview] != keyWindow) {
+                [sharedMenu removeFromSuperview];
+                [keyWindow addSubview:sharedMenu];
+                [keyWindow bringSubviewToFront:sharedMenu];
+            }
         }
-    });
+    }];
 }
