@@ -30,10 +30,10 @@ jobs:
               target.add_file_references([project.main_group.new_file(file)])
             end
             
-            # Cấu hình đường dẫn chuẩn theo thư mục của mày
+            # Cấu hình đường dẫn chuẩn
             target.build_configurations.each do |config|
-              config.build_settings["INFOPLIST_FILE"] = "ThreeOneOSFive/Info.plist"
-              config.build_settings["SWIFT_OBJC_BRIDGING_HEADER"] = "ThreeOneOSFive/ThreeOneOSFive-Bridging-Header.h"
+              config.build_settings["INFOPLIST_FILE"] = "Info.plist"
+              config.build_settings["SWIFT_OBJC_BRIDGING_HEADER"] = "ThreeOneOSFive-Bridging-Header.h"
               config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
               config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
             end
