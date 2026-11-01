@@ -14,12 +14,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Xcode version
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '15.0' # Điều chỉnh phiên bản Xcode phù hợp với dự án của bạn
+          xcode-version: '15.0'
 
       - name: Build Archive
         run: |
@@ -35,7 +35,6 @@ jobs:
           echo "Đang cấu hình ExportOptions và xuất file IPA..."
           mkdir -p build/ExportOptions
           
-          # Tạo tệp ExportOptions.plist cấu hình xuất file
           cat << EOF > build/ExportOptions/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -57,7 +56,7 @@ jobs:
                      -exportOptionsPlist build/ExportOptions/ExportOptions.plist
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ThreeOneOSFive-IPA
           path: build/IPA/*.ipa
