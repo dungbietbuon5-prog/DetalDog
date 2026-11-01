@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Build iOS App
-    runs-on: macos-14 # Chạy trên môi trường macOS mới nhất của GitHub
+    runs-on: macos-14
 
     steps:
       - name: Checkout Repository
@@ -20,12 +20,36 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Auto-detect Project/Workspace and Scheme
+        id: detect
+        run: |
+          echo "Finding workspace or project..."
+          if ls *.xcworkspace >/dev/null 2>&1; then
+            echo "TARGET_TYPE=workspace" >> $GITHUB_OUTPUT
+            echo "TARGET_NAME=$(basename *.xcworkspace)" >> $GITHUB_OUTPUT
+          elif ls *.xcodeproj >/dev/null 2>&1; then
+            echo "TARGET_TYPE=project" >> $GITHUB_OUTPUT
+            echo "TARGET_NAME=$(basename *.xcodeproj)" >> $GITHUB_OUTPUT
+          else
+            echo "Không tìm thấy file .xcodeproj hoặc .xcworkspace trong thư mục gốc!"
+            exit 1
+          fi
+          
+          # Lấy tên Scheme (thường trùng tên project)
+          SCHEME_NAME=$(basename ${{ steps.detect.outputs.TARGET_NAME }} .xcodeproj)
+          SCHEME_NAME=$(basename $SCHEME_NAME .xcworkspace)
+          echo "SCHEME_NAME=$SCHEME_NAME" >> $GITHUB_OUTPUT
+
       - name: Build and Archive App
         run: |
-          # Lệnh build không cần ký (Unsigned) để lấy file .app
+          TARGET_FLAG="-${{ steps.detect.outputs.TARGET_TYPE }}"
+          TARGET_FILE="${{ steps.detect.outputs.TARGET_NAME }}"
+          
+          echo "Đang build $TARGET_FLAG $TARGET_FILE với scheme ${{ steps.detect.outputs.SCHEME_NAME }}"
+          
           xcodebuild clean archive \
-            -project TenProjectCuaMay.xcodeproj \
-            -scheme TenSchemeCuaMay \
+            $TARGET_FLAG "$TARGET_FILE" \
+            -scheme "${{ steps.detect.outputs.SCHEME_NAME }}" \
             -sdk iphoneos \
             -configuration Release \
             -archivePath $PWD/build/App.xcarchive \
@@ -37,17 +61,14 @@ jobs:
 
       - name: Package to IPA
         run: |
-          # Tạo thư mục Payload và copy file .app vào
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
-          
-          # Nén thành file .ipa
           cd $PWD/build
-          zip -r AppUnsigned.ipa Payload
+          zip -r DetailDog-Unsigned.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Unsigned-IPA
-          path: $PWD/build/AppUnsigned.ipa
+          path: $PWD/build/DetailDog-Unsigned.ipa
           retention-days: 7
