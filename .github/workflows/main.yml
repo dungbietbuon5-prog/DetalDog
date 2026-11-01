@@ -33,7 +33,7 @@ jobs:
           export THEOS=$HOME/theos
           export PATH=$THEOS/bin:$PATH
           
-          # Tạo file Makefile tự động
+          # Tạo Makefile
           echo "ARCHS = arm64 arm64e" > Makefile
           echo "TARGET = iphone:clang:latest:15.0" >> Makefile
           echo "include \$(THEOS)/makefiles/common.mk" >> Makefile
@@ -43,13 +43,20 @@ jobs:
           echo "TrungDungFF_CFLAGS = -Wno-error -Wno-deprecated-declarations" >> Makefile
           echo "include \$(THEOS_MAKE_PATH)/tweak.mk" >> Makefile
 
-          # Chỉ build ra thư mục .theos (Chứa file .dylib), không package thành .deb
-          make
+          # Chạy build (chỉ lấy dylib, không đóng gói deb)
+          make package FINALPACKAGE=1
 
-      - name: Upload Dylib Artifact
+      - name: Merge Dylibs (Fat Binary)
+        run: |
+          # Gộp file arm64 và arm64e thành 1 file duy nhất (Fat Binary)
+          lipo -create \
+            .theos/obj/arm64/TrungDungFF.dylib \
+            .theos/obj/arm64e/TrungDungFF.dylib \
+            -output $PWD/TrungDungFF-Final.dylib
+
+      - name: Upload Final Dylib
         uses: actions/upload-artifact@v4
         with:
-          name: TrungDungFF-Dylib
-          # Lấy tất cả file .dylib trong thư mục build
-          path: .theos/obj/**/*.dylib
+          name: Final-Dylib
+          path: TrungDungFF-Final.dylib
           retention-days: 7
