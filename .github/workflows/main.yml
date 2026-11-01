@@ -1,0 +1,53 @@
+name: Build Unsigned IPA
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build iOS App
+    runs-on: macos-14 # Chạy trên môi trường macOS mới nhất của GitHub
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build and Archive App
+        run: |
+          # Lệnh build không cần ký (Unsigned) để lấy file .app
+          xcodebuild clean archive \
+            -project TenProjectCuaMay.xcodeproj \
+            -scheme TenSchemeCuaMay \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath $PWD/build/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+
+      - name: Package to IPA
+        run: |
+          # Tạo thư mục Payload và copy file .app vào
+          mkdir -p $PWD/build/Payload
+          cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
+          
+          # Nén thành file .ipa
+          cd $PWD/build
+          zip -r AppUnsigned.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unsigned-IPA
+          path: $PWD/build/AppUnsigned.ipa
+          retention-days: 7
