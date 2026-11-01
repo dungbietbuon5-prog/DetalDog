@@ -1,4 +1,4 @@
-name: Build Unsigned IPA
+name: Build iOS App Auto
 
 on:
   push:
@@ -7,69 +7,58 @@ on:
 
 jobs:
   build:
-    name: Build iOS App
     runs-on: macos-14
-
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Xcode Version
+      - name: Set up Xcode
         run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
 
-      - name: Auto-detect Project/Workspace
-        id: detect
-        run: |
-          echo "Finding workspace or project..."
-          # Tìm file .xcworkspace trước, nếu không có thì tìm .xcodeproj
-          WORKSPACE_FILE=$(find . -name "*.xcworkspace" -not -path "*/.*" | head -n 1)
-          PROJECT_FILE=$(find . -name "*.xcodeproj" -not -path "*/.*" | head -n 1)
-          
-          if [ -n "$WORKSPACE_FILE" ]; then
-            echo "TARGET_TYPE=workspace" >> $GITHUB_OUTPUT
-            echo "TARGET_PATH=$WORKSPACE_FILE" >> $GITHUB_OUTPUT
-            SCHEME_NAME=$(basename "$WORKSPACE_FILE" .xcworkspace)
-          elif [ -n "$PROJECT_FILE" ]; then
-            echo "TARGET_TYPE=project" >> $GITHUB_OUTPUT
-            echo "TARGET_PATH=$PROJECT_FILE" >> $GITHUB_OUTPUT
-            SCHEME_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
-          else
-            echo "LỖI: Không tìm thấy file .xcodeproj hoặc .xcworkspace ở BẤT KỲ đâu trong repo!"
-            exit 1
-          fi
-          
-          echo "SCHEME_NAME=$SCHEME_NAME" >> $GITHUB_OUTPUT
+      - name: Install Xcodeproj Gem
+        run: sudo gem install xcodeproj
 
-      - name: Build and Archive App
+      - name: Auto-generate Xcode Project
         run: |
-          TARGET_FLAG="-${{ steps.detect.outputs.TARGET_TYPE }}"
-          TARGET_PATH="${{ steps.detect.outputs.TARGET_PATH }}"
-          SCHEME_NAME="${{ steps.detect.outputs.SCHEME_NAME }}"
-          
-          echo "Đang build $TARGET_FLAG $TARGET_PATH với scheme $SCHEME_NAME"
-          
+          ruby -e '
+            require "xcodeproj"
+            project = Xcodeproj::Project.new("ThreeOneOSFive.xcodeproj")
+            target = project.new_target(:application, "ThreeOneOSFive", :ios, "15.0")
+            
+            # Tự động add toàn bộ file swift, c, h vào project
+            Dir.glob("**/*.{swift,c,h,m,mm}").each do |file|
+              target.add_file_references([project.main_group.new_file(file)])
+            end
+            
+            # Cấu hình Info.plist và Bridging Header
+            target.build_configurations.each do |config|
+              config.build_settings["INFOPLIST_FILE"] = "Info.plist"
+              config.build_settings["SWIFT_OBJC_BRIDGING_HEADER"] = "ThreeOneOSFive-Bridging-Header.h"
+              config.build_settings["CODE_SIGNING_ALLOWED"] = "NO"
+              config.build_settings["CODE_SIGNING_REQUIRED"] = "NO"
+            end
+            project.save
+          '
+
+      - name: Build Archive
+        run: |
           xcodebuild clean archive \
-            $TARGET_FLAG "$TARGET_PATH" \
-            -scheme "$SCHEME_NAME" \
+            -project ThreeOneOSFive.xcodeproj \
+            -scheme ThreeOneOSFive \
             -sdk iphoneos \
             -configuration Release \
             -archivePath $PWD/build/App.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGN_ENTITLEMENTS="" \
-            PROVISIONING_PROFILE_SPECIFIER=""
+            CODE_SIGNING_REQUIRED=NO
 
-      - name: Package to IPA
+      - name: Package IPA
         run: |
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
-          cd $PWD/build
-          zip -r DetailDog-Unsigned.ipa Payload
+          cd $PWD/build && zip -r App.ipa Payload
 
-      - name: Upload IPA Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Unsigned-IPA
-          path: $PWD/build/DetailDog-Unsigned.ipa
-          retention-days: 7
+          name: My-IPA
+          path: $PWD/build/App.ipa
