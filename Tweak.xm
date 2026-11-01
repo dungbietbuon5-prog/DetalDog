@@ -42,7 +42,6 @@ T ReadMemory(uintptr_t address) {
     return *(T*)(address);
 }
 
-// Đưa Matrix ra ngoài hàm để tránh lỗi template local type
 struct Matrix { float m[16]; };
 
 struct Vector3 {
@@ -123,29 +122,73 @@ void UpdateAimbot() {
     }
 }
 
-@interface TrungDungFFMenu : UIView
+// ==========================================
+// GIAO DIỆN MENU CÓ NÚT NỔI TD
+// ==========================================
+
+@interface TrungDungMenuView : UIView
+@property (nonatomic, strong) UIView *panel;
+@property (nonatomic, strong) UIButton *toggleBtn;
 @end
-@implementation TrungDungFFMenu
+
+@implementation TrungDungMenuView
+
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        self.backgroundColor = [UIColor colorWithRed:0.1 green:0.05 blue:0.05 alpha:0.9];
-        self.layer.cornerRadius = 10;
-        self.layer.borderWidth = 2;
-        self.layer.borderColor = [UIColor redColor].CGColor;
+        // 1. Tạo nút nổi TD
+        self.toggleBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        self.toggleBtn.frame = CGRectMake(0, 0, 50, 50);
+        self.toggleBtn.backgroundColor = [UIColor colorWithRed:0.8 green:0.1 blue:0.1 alpha:0.9];
+        [self.toggleBtn setTitle:@"TD" forState:UIControlStateNormal];
+        [self.toggleBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        self.toggleBtn.layer.cornerRadius = 25;
+        self.toggleBtn.layer.borderWidth = 2;
+        self.toggleBtn.layer.borderColor = [UIColor whiteColor].CGColor;
+        [self.toggleBtn addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:self.toggleBtn];
+
+        // 2. Tạo bảng Menu (Ẩn lúc đầu)
+        self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, 0, 200, 100)];
+        self.panel.backgroundColor = [UIColor colorWithRed:0.1 green:0.05 blue:0.05 alpha:0.9];
+        self.panel.layer.cornerRadius = 10;
+        self.panel.layer.borderWidth = 1;
+        self.panel.layer.borderColor = [UIColor redColor].CGColor;
+        self.panel.hidden = YES; // Ẩn
         
-        UILabel *lbl1 = [[UILabel alloc] initWithFrame:CGRectMake(15, 40, 150, 30)];
-        lbl1.text = @"Aim Kill (FF)";
-        lbl1.textColor = [UIColor whiteColor];
-        [self addSubview:lbl1];
+        // Thêm Label và Switch vào bảng Menu
+        UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(15, 15, 100, 30)];
+        lbl.text = @"Aim Kill (FF)";
+        lbl.textColor = [UIColor whiteColor];
+        [self.panel addSubview:lbl];
         
-        UISwitch *sw1 = [[UISwitch alloc] initWithFrame:CGRectMake(frame.size.width - 60, 40, 50, 30)];
-        [sw1 addTarget:self action:@selector(toggleAim:) forControlEvents:UIControlEventValueChanged];
-        [self addSubview:sw1];
+        UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(120, 15, 50, 30)];
+        [sw addTarget:self action:@selector(toggleAim:) forControlEvents:UIControlEventValueChanged];
+        [self.panel addSubview:sw];
+        
+        [self addSubview:self.panel];
+
+        // 3. Thêm cử chỉ kéo thả cho nút TD
+        UIPanGestureRecognizer *pan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
+        [self.toggleBtn addGestureRecognizer:pan];
     }
     return self;
 }
-- (void)toggleAim:(UISwitch *)s { aimbotEnabled = s.isOn; }
+
+- (void)toggleMenu {
+    self.panel.hidden = !self.panel.hidden;
+}
+
+- (void)toggleAim:(UISwitch *)s { 
+    aimbotEnabled = s.isOn; 
+}
+
+- (void)handlePan:(UIPanGestureRecognizer *)pan {
+    CGPoint translation = [pan translationInView:self];
+    self.center = CGPointMake(self.center.x + translation.x, self.center.y + translation.y);
+    [pan setTranslation:CGPointZero inView:self];
+}
+
 @end
 
 @interface TrungDungTimer : NSObject
@@ -165,14 +208,22 @@ void UpdateAimbot() {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            TrungDungFFMenu *menu = [[TrungDungFFMenu alloc] initWithFrame:CGRectMake(20, 100, 250, 100)];
             
-            // FIX LỖI KEYWINDOW: Dùng vòng lặp quét window thay vì gọi keyWindow
+            TrungDungMenuView *menu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 100, 280, 150)];
+            
+            // FIX LỖI DEPRECATED BẰNG @available
             UIWindow *window = nil;
-            for (UIWindow *w in [[UIApplication sharedApplication] windows]) {
-                if (w.isKeyWindow) {
-                    window = w;
-                    break;
+            if (@available(iOS 15.0, *)) {
+                for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+                    if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+                        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                            if (w.isKeyWindow) { window = w; break; }
+                        }
+                    }
+                }
+            } else {
+                for (UIWindow *w in [[UIApplication sharedApplication] windows]) {
+                    if (w.isKeyWindow) { window = w; break; }
                 }
             }
             
