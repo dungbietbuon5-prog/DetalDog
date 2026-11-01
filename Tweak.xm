@@ -5,24 +5,22 @@
 #include <cmath>
 
 // ==========================================
-// BỘ OFFSET FF NORMAL (Từ file của mày)
+// BỘ OFFSET FF NORMAL (Dùng #define cho an toàn)
 // ==========================================
-namespace Offsets {
-    constexpr uintptr_t GameFacade = 0xA72E4E0;
-    constexpr uintptr_t GameFacade_P2 = 0xB8;
-    constexpr uintptr_t BaseGame_Match = 0x90;
-    constexpr uintptr_t Match_PlayerDict = 0xC0;
-    constexpr uintptr_t Match_LocalPlayer = 0xD8;
-    constexpr uintptr_t Dict_Entries = 0x18;
-    constexpr uintptr_t Dict_Count = 0x20;
-    constexpr uintptr_t Dict_ArrayHeader = 0x20;
-    constexpr uintptr_t Dict_EntryStride = 0x18;
-    constexpr uintptr_t Dict_EntryValue = 0x10;
-    constexpr uintptr_t Player_IsDead = 0x7C;
-    constexpr uintptr_t Player_HP = 0x70;
-    constexpr uintptr_t Player_Rotation = 0x614;
-    constexpr uintptr_t Bone_Head = 0x6A0;
-}
+#define OFF_GameFacade         0xA72E4E0
+#define OFF_GameFacade_P2      0xB8
+#define OFF_BaseGame_Match     0x90
+#define OFF_Match_PlayerDict   0xC0
+#define OFF_Match_LocalPlayer  0xD8
+#define OFF_Dict_Entries       0x18
+#define OFF_Dict_Count         0x20
+#define OFF_Dict_ArrayHeader   0x20
+#define OFF_Dict_EntryStride   0x18
+#define OFF_Dict_EntryValue    0x10
+#define OFF_Player_IsDead      0x7C
+#define OFF_Player_HP          0x70
+#define OFF_Player_Rotation    0x614
+#define OFF_Bone_Head          0x6A0
 
 static uintptr_t g_baseAddr = 0;
 static bool aimbotEnabled = false;
@@ -49,14 +47,12 @@ struct Vector3 {
     Vector3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
     Vector3 operator-(const Vector3& v) const { return Vector3(x - v.x, y - v.y, z - v.z); }
     float distance(const Vector3& v) const {
-        return sqrt(pow(x - v.x, 2) + pow(y - v.y, 2) + pow(z - v.z, 2));
+        return sqrtf(powf(x - v.x, 2) + powf(y - v.y, 2) + powf(z - v.z, 2));
     }
 };
 
-// Hàm lấy ma trận vị trí (Mày thử nghiệm, có thể cần sửa Offset)
 Vector3 GetBonePosition(uintptr_t transformPtr) {
     if (!transformPtr) return Vector3();
-    // Trong Unity, vị trí thường nằm ở 0x90 hoặc 0x38
     struct Matrix { float m[16]; };
     Matrix mat = ReadMemory<Matrix>(transformPtr + 0x90); 
     return Vector3(mat.m[12], mat.m[13], mat.m[14]); 
@@ -67,21 +63,21 @@ void UpdateAimbot() {
     if (!g_baseAddr) g_baseAddr = get_base_address();
     if (!g_baseAddr) return;
 
-    uintptr_t gameFacade = ReadMemory<uintptr_t>(g_baseAddr + Offsets::GameFacade);
+    uintptr_t gameFacade = ReadMemory<uintptr_t>(g_baseAddr + OFF_GameFacade);
     if (!gameFacade) return;
-    uintptr_t baseGame = ReadMemory<uintptr_t>(gameFacade + Offsets::GameFacade_P2);
+    uintptr_t baseGame = ReadMemory<uintptr_t>(gameFacade + OFF_GameFacade_P2);
     if (!baseGame) return;
-    uintptr_t match = ReadMemory<uintptr_t>(baseGame + Offsets::BaseGame_Match);
+    uintptr_t match = ReadMemory<uintptr_t>(baseGame + OFF_BaseGame_Match);
     if (!match) return;
-    uintptr_t localPlayer = ReadMemory<uintptr_t>(match + Offsets::Match_LocalPlayer);
+    uintptr_t localPlayer = ReadMemory<uintptr_t>(match + OFF_Match_LocalPlayer);
     if (!localPlayer) return;
-    uintptr_t playerDict = ReadMemory<uintptr_t>(match + Offsets::Match_PlayerDict);
+    uintptr_t playerDict = ReadMemory<uintptr_t>(match + OFF_Match_PlayerDict);
     if (!playerDict) return;
 
-    uintptr_t entries = ReadMemory<uintptr_t>(playerDict + Offsets::Dict_Entries);
-    int count = ReadMemory<int>(playerDict + Offsets::Dict_Count);
+    uintptr_t entries = ReadMemory<uintptr_t>(playerDict + OFF_Dict_Entries);
+    int count = ReadMemory<int>(playerDict + OFF_Dict_Count);
     
-    uintptr_t myHeadTransform = ReadMemory<uintptr_t>(localPlayer + Offsets::Bone_Head);
+    uintptr_t myHeadTransform = ReadMemory<uintptr_t>(localPlayer + OFF_Bone_Head);
     if (!myHeadTransform) return;
     Vector3 myPos = GetBonePosition(myHeadTransform);
 
@@ -91,13 +87,13 @@ void UpdateAimbot() {
 
     // Quét địch
     for (int i = 0; i < count; i++) {
-        uintptr_t entryAddr = entries + Offsets::Dict_ArrayHeader + (i * Offsets::Dict_EntryStride);
-        uintptr_t enemyPlayer = ReadMemory<uintptr_t>(entryAddr + Offsets::Dict_EntryValue);
+        uintptr_t entryAddr = entries + OFF_Dict_ArrayHeader + (i * OFF_Dict_EntryStride);
+        uintptr_t enemyPlayer = ReadMemory<uintptr_t>(entryAddr + OFF_Dict_EntryValue);
         
         if (!enemyPlayer || enemyPlayer == localPlayer) continue;
-        if (ReadMemory<bool>(enemyPlayer + Offsets::Player_IsDead)) continue;
+        if (ReadMemory<bool>(enemyPlayer + OFF_Player_IsDead)) continue;
 
-        uintptr_t enemyHeadTransform = ReadMemory<uintptr_t>(enemyPlayer + Offsets::Bone_Head);
+        uintptr_t enemyHeadTransform = ReadMemory<uintptr_t>(enemyPlayer + OFF_Bone_Head);
         if (!enemyHeadTransform) continue;
         
         Vector3 enemyPos = GetBonePosition(enemyHeadTransform);
@@ -111,12 +107,15 @@ void UpdateAimbot() {
     }
 
     // Ngắm
-    if (bestTarget != 0) {
+    if (bestTarget != 0 && bestDistance > 0.1f) {
         Vector3 dir = bestEnemyPos - myPos;
-        float pitch = -asin(dir.y / bestDistance) * (180.0f / M_PI);
-        float yaw = atan2(dir.x, dir.z) * (180.0f / M_PI);
         
-        uintptr_t rotationAddr = localPlayer + Offsets::Player_Rotation;
+        // Dùng hàm của C thay vì M_PI để tránh lỗi thiếu define
+        float pitch = -asinf(dir.y / bestDistance) * (180.0f / 3.14159265f);
+        float yaw = atan2f(dir.x, dir.z) * (180.0f / 3.14159265f);
+        
+        uintptr_t rotationAddr = localPlayer + OFF_Player_Rotation;
+        
         vm_protect(mach_task_self(), rotationAddr, 8, false, VM_PROT_READ | VM_PROT_WRITE);
         float* angles = (float*)rotationAddr;
         angles[0] = pitch;
@@ -125,7 +124,7 @@ void UpdateAimbot() {
     }
 }
 
-// UI & Hook khởi tạo (Giữ nguyên như lúc nãy)
+// UI & Hook khởi tạo
 @interface TrungDungFFMenu : UIView
 @end
 @implementation TrungDungFFMenu
