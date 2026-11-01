@@ -6,6 +6,7 @@
 #include <cmath>
 #include <string.h>
 
+// --- OFFSETS CƠ BẢN ---
 #define GameFacade                  0xA72E4E0
 #define GameFacade_P2               0xB8
 #define BaseGame_Match              0x90
@@ -22,10 +23,17 @@
 #define Player_IsDead               0x7C
 #define Player_IsKnocked            0x1258
 #define Bone_Head                   0x6A0
+#define Player_Weapon               0x600
+#define Weapon_Recoil               0x18
 
 static uintptr_t g_baseAddr = 0;
-static bool aimbotEnabled = false;
 
+// --- TRẠNG THÁI TÍNH NĂNG ---
+static bool aimbotEnabled = false;
+static bool espEnabled = false;
+static bool noRecoilEnabled = false;
+
+// --- HÀM TIỆN ÍCH ---
 uintptr_t get_base_address() {
     for (uint32_t i = 0; i < _dyld_image_count(); i++) {
         const char *name = _dyld_get_image_name(i);
@@ -61,6 +69,7 @@ Vector3 GetBonePosition(uintptr_t transformPtr) {
     return Vector3(mat.m[12], mat.m[13], mat.m[14]); 
 }
 
+// --- LOGIC HOẠT ĐỘNG ---
 void UpdateAimbot() {
     if (!aimbotEnabled) return;
     if (!g_baseAddr) g_baseAddr = get_base_address();
@@ -124,6 +133,31 @@ void UpdateAimbot() {
     }
 }
 
+void UpdateNoRecoil() {
+    if (!noRecoilEnabled) return;
+    if (!g_baseAddr) g_baseAddr = get_base_address();
+    if (!g_baseAddr) return;
+
+    uintptr_t gameFacade = ReadMemory<uintptr_t>(g_baseAddr + GameFacade);
+    if (!gameFacade) return;
+    uintptr_t baseGame = ReadMemory<uintptr_t>(gameFacade + GameFacade_P2);
+    if (!baseGame) return;
+    uintptr_t match = ReadMemory<uintptr_t>(baseGame + BaseGame_Match);
+    if (!match) return;
+    uintptr_t localPlayer = ReadMemory<uintptr_t>(match + Match_LocalPlayer);
+    if (!localPlayer) return;
+
+    uintptr_t weaponPtr = ReadMemory<uintptr_t>(localPlayer + Player_Weapon);
+    if (!weaponPtr) return;
+    
+    uintptr_t recoilAddr = weaponPtr + Weapon_Recoil;
+    vm_protect(mach_task_self(), recoilAddr, 4, false, VM_PROT_READ | VM_PROT_WRITE);
+    float* recoil = (float*)recoilAddr;
+    *recoil = 0.0f;
+    vm_protect(mach_task_self(), recoilAddr, 4, false, VM_PROT_READ);
+}
+
+
 // ==========================================
 // GIAO DIỆN MENU CÓ NÚT TD VÀ NÚT X
 // ==========================================
@@ -151,7 +185,7 @@ void UpdateAimbot() {
         [self addSubview:self.toggleBtn];
 
         // 2. Bảng Menu (Ẩn lúc đầu)
-        self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, 0, 220, 150)];
+        self.panel = [[UIView alloc] initWithFrame:CGRectMake(60, -20, 220, 180)];
         self.panel.backgroundColor = [UIColor colorWithRed:0.1 green:0.05 blue:0.05 alpha:0.95];
         self.panel.layer.cornerRadius = 10;
         self.panel.layer.borderWidth = 1;
@@ -168,14 +202,35 @@ void UpdateAimbot() {
         [self.panel addSubview:closeBtn];
 
         // 4. Các chức năng trong Menu
-        UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(15, 40, 120, 30)];
-        lbl.text = @"Aim Kill (FF)";
-        lbl.textColor = [UIColor whiteColor];
-        [self.panel addSubview:lbl];
+        // Aim Kill
+        UILabel *lblAim = [[UILabel alloc] initWithFrame:CGRectMake(15, 40, 120, 30)];
+        lblAim.text = @"Aim Kill";
+        lblAim.textColor = [UIColor whiteColor];
+        [self.panel addSubview:lblAim];
         
-        UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectMake(140, 40, 50, 30)];
-        [sw addTarget:self action:@selector(toggleAim:) forControlEvents:UIControlEventValueChanged];
-        [self.panel addSubview:sw];
+        UISwitch *swAim = [[UISwitch alloc] initWithFrame:CGRectMake(140, 40, 50, 30)];
+        [swAim addTarget:self action:@selector(toggleAim:) forControlEvents:UIControlEventValueChanged];
+        [self.panel addSubview:swAim];
+
+        // No Recoil
+        UILabel *lblRecoil = [[UILabel alloc] initWithFrame:CGRectMake(15, 90, 120, 30)];
+        lblRecoil.text = @"No Recoil";
+        lblRecoil.textColor = [UIColor whiteColor];
+        [self.panel addSubview:lblRecoil];
+        
+        UISwitch *swRecoil = [[UISwitch alloc] initWithFrame:CGRectMake(140, 90, 50, 30)];
+        [swRecoil addTarget:self action:@selector(toggleRecoil:) forControlEvents:UIControlEventValueChanged];
+        [self.panel addSubview:swRecoil];
+
+        // ESP (Placeholder)
+        UILabel *lblEsp = [[UILabel alloc] initWithFrame:CGRectMake(15, 140, 120, 30)];
+        lblEsp.text = @"ESP (Coming)";
+        lblEsp.textColor = [UIColor grayColor];
+        [self.panel addSubview:lblEsp];
+        
+        UISwitch *swEsp = [[UISwitch alloc] initWithFrame:CGRectMake(140, 140, 50, 30)];
+        swEsp.enabled = NO;
+        [self.panel addSubview:swEsp];
         
         [self addSubview:self.panel];
 
@@ -189,6 +244,7 @@ void UpdateAimbot() {
 - (void)toggleMenu { self.panel.hidden = !self.panel.hidden; }
 - (void)closeMenu { self.panel.hidden = YES; }
 - (void)toggleAim:(UISwitch *)s { aimbotEnabled = s.isOn; }
+- (void)toggleRecoil:(UISwitch *)s { noRecoilEnabled = s.isOn; }
 
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
     CGPoint translation = [pan translationInView:self];
@@ -197,6 +253,9 @@ void UpdateAimbot() {
 }
 @end
 
+// ==========================================
+// VÒNG LẶP & KHỞI TẠO TỰ ĐỘNG
+// ==========================================
 @interface TrungDungTimer : NSObject
 + (void)startLoop;
 @end
@@ -204,32 +263,31 @@ void UpdateAimbot() {
 + (void)startLoop {
     [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer * _Nonnull timer) {
         UpdateAimbot();
+        UpdateNoRecoil();
     }];
 }
 @end
 
-%hook UIWindow
-- (instancetype)initWithFrame:(CGRect)frame {
-    id ret = %orig;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            
-            TrungDungMenuView *menu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 100, 280, 150)];
-            
-            UIWindow *window = nil;
-            for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
-                if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
-                    for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-                        if (w.isKeyWindow) { window = w; break; }
-                    }
+// Hàm tự chạy khi inject dylib (Không cần CydiaSubstrate)
+__attribute__((constructor))
+static void initialize_menu() {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        
+        TrungDungMenuView *menu = [[TrungDungMenuView alloc] initWithFrame:CGRectMake(20, 100, 280, 200)];
+        
+        UIWindow *window = nil;
+        for (UIScene *scene in [[UIApplication sharedApplication] connectedScenes]) {
+            if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+                for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                    if (w.isKeyWindow) { window = w; break; }
                 }
             }
-            
-            if (window) { [window addSubview:menu]; }
-            [NSClassFromString(@"TrungDungTimer") startLoop];
-        });
+        }
+        
+        if (window) {
+            [window addSubview:menu];
+        }
+        
+        [NSClassFromString(@"TrungDungTimer") startLoop];
     });
-    return ret;
 }
-%end
