@@ -6,9 +6,8 @@ TWEAK_NAME = TrungDungFF
 TrungDungFF_FILES = Tweak.xm
 TrungDungFF_FRAMEWORKS = UIKit Foundation
 
-# Bỏ qua lỗi deprecated (hàm cũ) để Theos không dừng build
+# Bắt buộc phải có 2 dòng này để bỏ qua lỗi deprecated
 TrungDungFF_CFLAGS = -Wno-error -Wno-deprecated-declarations
 TrungDungFF_CCFLAGS = -Wno-error -Wno-deprecated-declarations
-TrungDungFF_CXXFLAGS = -Wno-error -Wno-deprecated-declarations
 
 include $(THEOS_MAKE_PATH)/tweak.mk
