@@ -16,29 +16,38 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Auto Extract Zip Archives if Exist
+      - name: Auto Extract Zip Archives and Clean macOS Junk
         run: |
-          echo "=== KIEM TRA DANH SACH FILE TRONG REPO ==="
-          ls -la
+          echo "=== DANG GIAI NEN VA DON DEP FILE RAC MACOS ==="
           
-          # Neu co file .zip nao trong repo, tu động giai nen
+          # Giai nen neu co file zip
           for zipfile in *.zip; do
             if [ -f "$zipfile" ]; then
-              echo "Phat hien file nen: $zipfile, dang tien hành giai nen..."
+              echo "Phat hien file nen: $zipfile, dang giai nen..."
               unzip -q "$zipfile"
             fi
           done
 
-          echo "=== DANH SACH SAU KHI GIAI NEN ==="
+          # Xoa bo hoan toan thu mục rác __MACOSX va cac file ẩn bat dau bang ._
+          rm -rf __MACOSX
+          find . -name "._*" -delete
+
+          echo "=== DANH SACH SAU KHI DON DEP ==="
           find . -maxdepth 3 -not -path '*/.*'
 
       - name: Build Archive and Generate IPA
         run: |
-          PROJECT_PATH=$(find . -name "*.xcodeproj" | head -n 1)
+          # Tim file .xcodeproj thuc su hop le (co chua project.pbxproj va khong phai file rac)
+          PROJECT_PATH=""
+          for p in $(find . -name "*.xcodeproj"); do
+            if [[ "$p" != */._* ]] && [ -d "$p" ] && [ -f "$p/project.pbxproj" ]; then
+              PROJECT_PATH="$p"
+              break
+            fi
+          done
           
           if [ -z "$PROJECT_PATH" ]; then
-            echo "Loi: Van khong tim thay file Xcode project (.xcodeproj)!"
-            echo "Vui long kiem tra lai: Ban da push toan bo thu muc ma nguon project len nhanh main chua?"
+            echo "Loi: Khong tìm thay file Xcode project (.xcodeproj) hop le nao!"
             exit 1
           fi
           
@@ -47,7 +56,7 @@ jobs:
           PROJECT_FILE=$(basename "$PROJECT_PATH")
           PROJECT_NAME=$(basename "$PROJECT_PATH" .xcodeproj)
           
-          echo "Da tim thay project: $PROJECT_NAME tai thu muc: $(pwd)"
+          echo "Da tim thay project chuan: $PROJECT_NAME tai thu muc: $(pwd)"
           
           mkdir -p build/Payload
           
@@ -72,7 +81,7 @@ jobs:
             zip -r "$PROJECT_NAME.ipa" Payload
             echo "Tao thanh cong file IPA!"
           else
-            echo "Loi: Khong tim thay file .app sau khi build!"
+            echo "Loi: Khong tìm thay file .app sau khi build!"
             exit 1
           fi
 
