@@ -13,6 +13,18 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Unzip Source Code
+        run: |
+          # Tự động tìm file zip ở thư mục gốc và giải nén
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Đang giải nén $ZIP_FILE..."
+            unzip -q "$ZIP_FILE"
+            rm "$ZIP_FILE"
+          else
+            echo "Không tìm thấy file zip nào!"
+          fi
+
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
 
@@ -24,11 +36,8 @@ jobs:
 
       - name: Build Archive
         run: |
-          # Tìm tên Project tự động
           PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
           PROJECT_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
-          
-          echo "Đang build Project: $PROJECT_NAME"
           
           xcodebuild clean archive \
             -project "$PROJECT_FILE" \
