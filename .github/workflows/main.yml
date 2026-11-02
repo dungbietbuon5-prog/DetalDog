@@ -13,8 +13,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Unzip Source Code
+      - name: Unzip and Flatten Source Code
         run: |
+          # Giải nén file
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
             unzip -q "$ZIP_FILE"
@@ -22,6 +23,13 @@ jobs:
           fi
           rm -rf __MACOSX
           find . -name "._*" -delete
+          
+          # Đưa toàn bộ nội dung thư mục con ra ngoài thư mục gốc để chống lỗi duplicate
+          find . -mindepth 2 -type f -exec mv -t . {} + 2>/dev/null || true
+          
+          # Xóa các thư mục rỗng sau khi đã chuyển file đi
+          find . -mindepth 1 -type d -empty -delete 2>/dev/null || true
+          rm -rf ProxyDetal-1.1.0 ThreeOneOSFive
 
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
@@ -31,18 +39,7 @@ jobs:
 
       - name: Generate Project and Build
         run: |
-          # Tìm thư mục chứa file App.swift
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          
-          if [ -z "$TARGET_DIR" ]; then
-            echo "LỖI: Không tìm thấy file App.swift ở đâu cả! Code của mày đâu?"
-            exit 1
-          fi
-          
-          echo "Đã tìm thấy code tại: $TARGET_DIR"
-          cd "$TARGET_DIR"
-          
-          # Tạo một file project.yml tự động ngay tại thư mục này
+          # Tạo file project.yml ngay tại thư mục gốc (nơi đã được làm phẳng)
           cat > project.yml << 'EOF'
           name: ProxyDetal
           options:
@@ -61,6 +58,8 @@ jobs:
                 - path: .
                   excludes:
                     - "Patches/**"
+                    - ".git/**"
+                    - ".github/**"
               dependencies:
                 - package: ZipArchive
               settings:
@@ -74,19 +73,15 @@ jobs:
                   CODE_SIGNING_REQUIRED: NO
           EOF
           
-          # Chạy XcodeGen để tạo file .xcodeproj
           xcodegen generate
-          
-          # Tải thư viện ZipArchive
           xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
 
-          # Build
           xcodebuild clean archive \
             -project ProxyDetal.xcodeproj \
             -scheme ProxyDetal \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $PWD/../../build/App.xcarchive \
+            -archivePath $PWD/build/App.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -94,16 +89,15 @@ jobs:
 
       - name: Package to IPA
         run: |
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
           
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          if [ -d "$TARGET_DIR/Patches" ]; then
-            cp -r "$TARGET_DIR/Patches" "$APP_PATH/Patches"
+          # Nhét thư mục Patches vào App
+          if [ -d "Patches" ]; then
+            cp -r "Patches" "$APP_PATH/Patches"
           fi
           
           cd $PWD/build
