@@ -28,53 +28,39 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Move to correct directory and Generate Project
+      - name: Generate Xcode Project
         run: |
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          cd "$TARGET_DIR"
-          
-          # Copy file cấu hình từ ngoài vào
-          cp ../../project.yml . || cp ../project.yml . || cp project.yml .
-          if [ ! -f "app.entitlements" ]; then
-            cp ../../app.entitlements . || cp ../app.entitlements . || cp app.entitlements .
-          fi
-          
+          # Chạy XcodeGen ở thư mục gốc
           xcodegen generate
           
-          # Resolve các gói thư viện (ZipArchive) trước khi build
-          xcodebuild -resolvePackageDependencies
+          # Tải các thư viện (ZipArchive) trước khi build
+          xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
 
       - name: Build Archive
         run: |
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          cd "$TARGET_DIR"
-          
-          PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
-          PROJECT_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
-          
           xcodebuild clean archive \
-            -project "$PROJECT_FILE" \
-            -scheme "$PROJECT_NAME" \
+            -project ProxyDetal.xcodeproj \
+            -scheme ProxyDetal \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $PWD/../build/App.xcarchive \
+            -archivePath $PWD/build/App.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_ENTITLEMENTS="app.entitlements"
+            CODE_SIGN_ENTITLEMENTS="ThreeOneOSFive/app.entitlements"
 
       - name: Package to IPA
         run: |
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
           
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          if [ -d "$TARGET_DIR/Patches" ]; then
+          # Nhét thư mục Patches vào bên trong App sau khi build
+          if [ -d "ThreeOneOSFive/Patches" ]; then
             echo "Đang nhét thư mục Patches vào App..."
-            cp -r "$TARGET_DIR/Patches" "$APP_PATH/Patches"
+            cp -r "ThreeOneOSFive/Patches" "$APP_PATH/Patches"
           fi
           
           cd $PWD/build
