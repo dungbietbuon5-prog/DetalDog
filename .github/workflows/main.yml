@@ -21,18 +21,17 @@ jobs:
             rm "$ZIP_FILE"
           fi
           
-          # Xóa file rác của Mac
           rm -rf __MACOSX
           find . -name "._*" -delete
           
-          # Đưa file ra ngoài và xóa thư mục thừa
+          # Chỉ di chuyển nội dung thư mục con ra ngoài (bỏ qua file ẩn của git)
           if [ -d "ProxyDetal-1.1.0" ]; then
-            cp -R ProxyDetal-1.1.0/* . 2>/dev/null || true
+            mv ProxyDetal-1.1.0/* . 2>/dev/null || true
             rm -rf ProxyDetal-1.1.0
           fi
           
           if [ -d "ThreeOneOSFive" ]; then
-            cp -R ThreeOneOSFive/* . 2>/dev/null || true
+            mv ThreeOneOSFive/* . 2>/dev/null || true
             rm -rf ThreeOneOSFive
           fi
 
@@ -44,7 +43,6 @@ jobs:
 
       - name: Generate Xcode Project
         run: |
-          # Chạy XcodeGen và tải thư viện
           xcodegen generate
           xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
 
@@ -69,7 +67,6 @@ jobs:
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          # Copy thư mục Patches vào App
           if [ -d "Patches" ]; then
             cp -r "Patches" "$APP_PATH/Patches"
           fi
