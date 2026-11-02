@@ -28,39 +28,56 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate Xcode Project
+      - name: Move to correct directory and Generate Project
         run: |
-          # Chạy XcodeGen ở thư mục gốc
+          # Tự động tìm thư mục chứa file App.swift
+          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
+          
+          if [ -z "$TARGET_DIR" ]; then
+            echo "LỖI: Không tìm thấy file App.swift!"
+            exit 1
+          fi
+          
+          echo "Đã tìm thấy source code tại: $TARGET_DIR"
+          cd "$TARGET_DIR"
+          
+          # Copy file project.yml từ ngoài vào
+          cp ../../project.yml . || cp ../project.yml . || cp project.yml .
+          
+          # Chạy XcodeGen
           xcodegen generate
           
-          # Tải các thư viện (ZipArchive) trước khi build
+          # Tải thư viện ZipArchive
           xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
 
       - name: Build Archive
         run: |
+          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
+          cd "$TARGET_DIR"
+          
           xcodebuild clean archive \
             -project ProxyDetal.xcodeproj \
             -scheme ProxyDetal \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $PWD/build/App.xcarchive \
+            -archivePath $PWD/../build/App.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_ENTITLEMENTS="ThreeOneOSFive/app.entitlements"
+            CODE_SIGN_ENTITLEMENTS="app.entitlements"
 
       - name: Package to IPA
         run: |
+          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
           
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          # Nhét thư mục Patches vào bên trong App sau khi build
-          if [ -d "ThreeOneOSFive/Patches" ]; then
-            echo "Đang nhét thư mục Patches vào App..."
-            cp -r "ThreeOneOSFive/Patches" "$APP_PATH/Patches"
+          # Nhét thư mục Patches vào App
+          if [ -d "$TARGET_DIR/Patches" ]; then
+            cp -r "$TARGET_DIR/Patches" "$APP_PATH/Patches"
           fi
           
           cd $PWD/build
