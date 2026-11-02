@@ -13,8 +13,16 @@ targets:
     platform: iOS
     sources: 
       - path: .
+        # CHỈ QUÉT CÁC FILE CẦN THIẾT, BỎ QUA FILE RÁC CỦA GIT
+        includes:
+          - "**/*.swift"
+          - "**/*.plist"
+          - "**/*.entitlements"
+          - "**/*.xcassets"
         excludes:
           - "**/Patches/**"
+          - "**/.git/**"
+          - "**/.github/**"
     dependencies:
       - package: ZipArchive
     settings:
