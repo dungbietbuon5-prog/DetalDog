@@ -11,12 +11,25 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repository with Submodules
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Debug Directory Structure
+      - name: Auto Extract Zip Archives if Exist
         run: |
-          echo "=== DANH SACH CAC FILE TRONG REPO ==="
+          echo "=== KIEM TRA DANH SACH FILE TRONG REPO ==="
+          ls -la
+          
+          # Neu co file .zip nao trong repo, tu động giai nen
+          for zipfile in *.zip; do
+            if [ -f "$zipfile" ]; then
+              echo "Phat hien file nen: $zipfile, dang tien hành giai nen..."
+              unzip -q "$zipfile"
+            fi
+          done
+
+          echo "=== DANH SACH SAU KHI GIAI NEN ==="
           find . -maxdepth 3 -not -path '*/.*'
 
       - name: Build Archive and Generate IPA
@@ -24,7 +37,8 @@ jobs:
           PROJECT_PATH=$(find . -name "*.xcodeproj" | head -n 1)
           
           if [ -z "$PROJECT_PATH" ]; then
-            echo "Loi: Khong tim thay file Xcode project (.xcodeproj) nao trong repo!"
+            echo "Loi: Van khong tim thay file Xcode project (.xcodeproj)!"
+            echo "Vui long kiem tra lai: Ban da push toan bo thu muc ma nguon project len nhanh main chua?"
             exit 1
           fi
           
@@ -33,7 +47,7 @@ jobs:
           PROJECT_FILE=$(basename "$PROJECT_PATH")
           PROJECT_NAME=$(basename "$PROJECT_PATH" .xcodeproj)
           
-          echo "Da tim thay project: $PROJECT_NAME (file: $PROJECT_FILE) tai thu muc: $(pwd)"
+          echo "Da tim thay project: $PROJECT_NAME tai thu muc: $(pwd)"
           
           mkdir -p build/Payload
           
@@ -46,7 +60,6 @@ jobs:
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
 
-          echo "Dang dong goi file .ipa..."
           APP_PATH="build/$PROJECT_NAME.xcarchive/Products/Applications/$PROJECT_NAME.app"
           
           if [ ! -d "$APP_PATH" ]; then
@@ -57,7 +70,7 @@ jobs:
             cp -r "$APP_PATH" build/Payload/
             cd build
             zip -r "$PROJECT_NAME.ipa" Payload
-            echo "Da tao thanh cong file IPA!"
+            echo "Tao thanh cong file IPA!"
           else
             echo "Loi: Khong tim thay file .app sau khi build!"
             exit 1
