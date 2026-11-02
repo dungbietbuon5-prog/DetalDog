@@ -1,91 +1,56 @@
-name: Build ThreeOneOSFive IPA
+name: Build 3105 IPA
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
-  build-ipa:
-    name: Build and Package iOS App
-    runs-on: macos-latest
+  build:
+    runs-on: macos-14
 
     steps:
-      - name: Checkout Repository with Submodules
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Auto Extract Zip Archives and Clean macOS Junk
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build Archive
         run: |
-          for zipfile in *.zip; do
-            if [ -f "$zipfile" ]; then
-              unzip -q "$zipfile"
-            fi
-          done
+          # Tìm tên Project tự động
+          PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
+          PROJECT_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
+          
+          echo "Đang build Project: $PROJECT_NAME"
+          
+          xcodebuild clean archive \
+            -project "$PROJECT_FILE" \
+            -scheme "$PROJECT_NAME" \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath $PWD/build/App.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="app.entitlements"
 
-          rm -rf __MACOSX
-          find . -name "._*" -delete
-
-      - name: Build Archive and Generate IPA
+      - name: Package to IPA
         run: |
-          PROJECT_PATH=""
-          for p in $(find . -name "*.xcodeproj"); do
-            if [[ "$p" != */_* ]] && [ -d "$p" ] && [ -f "$p/project.pbxproj" ]; then
-              PROJECT_PATH="$p"
-              break
-            fi
-          done
-          
-          if [ -z "$PROJECT_PATH" ]; then
-            echo "Loi: Khong tim thay file Xcode project hop le!"
-            exit 1
-          fi
-          
-          PROJECT_DIR=$(dirname "$PROJECT_PATH")
-          cd "$PROJECT_DIR"
-          PROJECT_FILE=$(basename "$PROJECT_PATH")
-          PROJECT_NAME=$(basename "$PROJECT_PATH" .xcodeproj)
-          
-          echo "Da vao thu muc: $(pwd)"
-          
-          SCHEME_NAME=$(xcodebuild -list | sed -n '/Schemes:/,$p' | tail -n +2 | head -n 1 | xargs)
-          if [ -z "$SCHEME_NAME" ]; then
-            SCHEME_NAME="$PROJECT_NAME"
-          fi
-          echo "Phat hien Scheme su dung: $SCHEME_NAME"
-          
-          mkdir -p build/Payload
-          
-          xcodebuild -project "$PROJECT_FILE" \
-                     -scheme "$SCHEME_NAME" \
-                     -configuration Release \
-                     -derivedDataPath build/DerivedData \
-                     archive -archivePath build/"$PROJECT_NAME".xcarchive \
-                     CODE_SIGN_IDENTITY="" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO
-
-          # TIM CHINH XAC FILE .APP TRONG XCARCHIVE HOAC DERIVEDDATA
-          REAL_APP=$(find build -name "*.app" -type d | grep "Products/Applications" | head -n 1)
-          if [ -z "$REAL_APP" ]; then
-            REAL_APP=$(find build -name "*.app" -type d | head -n 1)
-          fi
-
-          if [ -d "$REAL_APP" ]; then
-            cp -r "$REAL_APP" build/Payload/
-            cd build
-            APP_BASENAME=$(basename "$REAL_APP" .app)
-            zip -r "$APP_BASENAME.ipa" Payload
-            echo "Tao thanh cong file IPA: $APP_BASENAME.ipa!"
-          else
-            echo "Loi: Khong tim thay file .app sau khi build!"
-            exit 1
-          fi
+          mkdir -p $PWD/build/Payload
+          cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
+          cd $PWD/build
+          zip -r 3105-Unsigned.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThreeOneOSFive-IPA
-          path: '**/build/*.ipa'
+          name: 3105-IPA
+          path: $PWD/build/3105-Unsigned.ipa
           retention-days: 7
