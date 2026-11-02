@@ -3,14 +3,20 @@ options:
   bundleIdPrefix: com.proxydetal
   deploymentTarget:
     iOS: "15.0"
+packages:
+  ZipArchive:
+    url: https://github.com/ZipArchive/ZipArchive.git
+    from: 2.5.0
 targets:
   ProxyDetal:
     type: application
     platform: iOS
     sources: 
-      - path: .
+      - path: . 
         excludes:
-          - "Patches/**" # Bỏ qua toàn bộ thư mục Patches khi build
+          - "Patches/**"
+    dependencies:
+      - package: ZipArchive
     settings:
       base:
         INFOPLIST_FILE: Info.plist
