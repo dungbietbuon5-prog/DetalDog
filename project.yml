@@ -8,7 +8,9 @@ targets:
     type: application
     platform: iOS
     sources: 
-      - path: . # Quét toàn bộ file trong thư mục hiện tại
+      - path: .
+        excludes:
+          - "Patches/**" # Bỏ qua toàn bộ thư mục Patches khi build
     settings:
       base:
         INFOPLIST_FILE: Info.plist
