@@ -49,7 +49,6 @@ jobs:
           
           echo "Da vao thu muc: $(pwd)"
           
-          # TU DONG TIM TEN SCHEME CHUAN TRONG PROJECT
           SCHEME_NAME=$(xcodebuild -list | sed -n '/Schemes:/,$p' | tail -n +2 | head -n 1 | xargs)
           if [ -z "$SCHEME_NAME" ]; then
             SCHEME_NAME="$PROJECT_NAME"
@@ -67,18 +66,15 @@ jobs:
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
 
-          APP_PATH="build/$PROJECT_NAME.xcarchive/Products/Applications/"
-          
-          # Tim file .app bat ky duoc sinh ra sau khi build
-          REAL_APP=$(find build/DerivedData -name "*.app" | head -n 1)
+          # TIM CHINH XAC FILE .APP TRONG XCARCHIVE HOAC DERIVEDDATA
+          REAL_APP=$(find build -name "*.app" -type d | grep "Products/Applications" | head -n 1)
           if [ -z "$REAL_APP" ]; then
-            REAL_APP=$(find build -name "*.app" | head -n 1)
+            REAL_APP=$(find build -name "*.app" -type d | head -n 1)
           fi
 
           if [ -d "$REAL_APP" ]; then
             cp -r "$REAL_APP" build/Payload/
             cd build
-            # Lay ten file app that de dat ten file ipa
             APP_BASENAME=$(basename "$REAL_APP" .app)
             zip -r "$APP_BASENAME.ipa" Payload
             echo "Tao thanh cong file IPA: $APP_BASENAME.ipa!"
