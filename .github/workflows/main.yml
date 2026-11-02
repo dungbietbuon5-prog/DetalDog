@@ -13,56 +13,80 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Unzip and Move to Root
+      - name: Unzip Source Code
         run: |
-          # Tìm và giải nén file zip
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
             unzip -q "$ZIP_FILE"
             rm "$ZIP_FILE"
           fi
-          
-          # Xóa file rác của Mac
           rm -rf __MACOSX
           find . -name "._*" -delete
-
-          # Tự động tìm thư mục chứa file .xcodeproj và nhảy vào đó
-          PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "LỖI: Không tìm thấy file .xcodeproj nào!"
-            exit 1
-          fi
-          
-          PROJECT_DIR=$(dirname "$PROJECT_FILE")
-          echo "Đã tìm thấy project tại: $PROJECT_DIR"
-          
-          # Di chuyển vào đúng thư mục chứa project
-          cd "$PROJECT_DIR"
 
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
 
-      - name: Resolve Dependencies
-        run: |
-          PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
-          # Nếu có dùng SPM thì resolve, không thì thôi
-          xcodebuild -resolvePackageDependencies -project "$PROJECT_FILE" || true
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
-      - name: Build Archive
+      - name: Generate Project and Build
         run: |
-          PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
-          PROJECT_DIR=$(dirname "$PROJECT_FILE")
-          cd "$PROJECT_DIR"
+          # Tìm thư mục chứa file App.swift
+          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
           
-          PROJECT_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
+          if [ -z "$TARGET_DIR" ]; then
+            echo "LỖI: Không tìm thấy file App.swift ở đâu cả! Code của mày đâu?"
+            exit 1
+          fi
           
-          # Build trực tiếp bằng file xcodeproj có sẵn của mày
+          echo "Đã tìm thấy code tại: $TARGET_DIR"
+          cd "$TARGET_DIR"
+          
+          # Tạo một file project.yml tự động ngay tại thư mục này
+          cat > project.yml << 'EOF'
+          name: ProxyDetal
+          options:
+            bundleIdPrefix: com.proxydetal
+            deploymentTarget:
+              iOS: "15.0"
+          packages:
+            ZipArchive:
+              url: https://github.com/ZipArchive/ZipArchive.git
+              from: 2.5.0
+          targets:
+            ProxyDetal:
+              type: application
+              platform: iOS
+              sources:
+                - path: .
+                  excludes:
+                    - "Patches/**"
+              dependencies:
+                - package: ZipArchive
+              settings:
+                base:
+                  INFOPLIST_FILE: Info.plist
+                  PRODUCT_NAME: ProxyDetal
+                  PRODUCT_BUNDLE_IDENTIFIER: com.proxydetal.app
+                  GENERATE_INFOPLIST_FILE: NO
+                  CODE_SIGN_ENTITLEMENTS: app.entitlements
+                  CODE_SIGNING_ALLOWED: NO
+                  CODE_SIGNING_REQUIRED: NO
+          EOF
+          
+          # Chạy XcodeGen để tạo file .xcodeproj
+          xcodegen generate
+          
+          # Tải thư viện ZipArchive
+          xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
+
+          # Build
           xcodebuild clean archive \
-            -project "$PROJECT_FILE" \
-            -scheme "$PROJECT_NAME" \
+            -project ProxyDetal.xcodeproj \
+            -scheme ProxyDetal \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $PWD/../build/App.xcarchive \
+            -archivePath $PWD/../../build/App.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -70,17 +94,16 @@ jobs:
 
       - name: Package to IPA
         run: |
+          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
+          
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
           
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          # Copy thư mục Patches vào bên trong app
-          PATCHES_DIR=$(find . -type d -name "Patches" | head -n 1)
-          if [ -n "$PATCHES_DIR" ]; then
-            echo "Đang copy thư mục Patches từ $PATCHES_DIR..."
-            cp -r "$PATCHES_DIR" "$APP_PATH/Patches"
+          if [ -d "$TARGET_DIR/Patches" ]; then
+            cp -r "$TARGET_DIR/Patches" "$APP_PATH/Patches"
           fi
           
           cd $PWD/build
