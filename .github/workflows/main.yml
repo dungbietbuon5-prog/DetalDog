@@ -1,4 +1,4 @@
-name: Build 3105 IPA
+name: Build KGVN Dylib
 
 on:
   push:
@@ -10,102 +10,51 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Unzip and Flatten Source Code
+      - name: Install Theos
         run: |
-          # Giải nén file
+          export THEOS=$HOME/theos
+          mkdir -p $THEOS
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          curl -L https://github.com/theos/sdks/archive/master.zip -o sdks.zip
+          unzip sdks.zip -d $THEOS/sdks
+          mv $THEOS/sdks/sdks-master/* $THEOS/sdks/
+          rm -rf $THEOS/sdks/sdks-master sdks.zip
+          curl -L https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64 -o $THEOS/bin/ldid
+          chmod +x $THEOS/bin/ldid
+
+      - name: Extract and Build
+        run: |
+          export THEOS=$HOME/theos
+          export PATH=$THEOS/bin:$PATH
+          
+          # Giải nén file zip
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
             unzip -q "$ZIP_FILE"
             rm "$ZIP_FILE"
           fi
-          rm -rf __MACOSX
-          find . -name "._*" -delete
           
-          # Đưa toàn bộ nội dung thư mục con ra ngoài thư mục gốc để chống lỗi duplicate
-          find . -mindepth 2 -type f -exec mv -t . {} + 2>/dev/null || true
+          # Tìm thư mục chứa Makefile
+          TARGET_DIR=$(find . -name "Makefile" -exec dirname {} \; | head -n 1)
           
-          # Xóa các thư mục rỗng sau khi đã chuyển file đi
-          find . -mindepth 1 -type d -empty -delete 2>/dev/null || true
-          rm -rf ProxyDetal-1.1.0 ThreeOneOSFive
-
-      - name: Select Xcode Version
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Project and Build
-        run: |
-          # Tạo file project.yml ngay tại thư mục gốc (nơi đã được làm phẳng)
-          cat > project.yml << 'EOF'
-          name: ProxyDetal
-          options:
-            bundleIdPrefix: com.proxydetal
-            deploymentTarget:
-              iOS: "15.0"
-          packages:
-            ZipArchive:
-              url: https://github.com/ZipArchive/ZipArchive.git
-              from: 2.5.0
-          targets:
-            ProxyDetal:
-              type: application
-              platform: iOS
-              sources:
-                - path: .
-                  excludes:
-                    - "Patches/**"
-                    - ".git/**"
-                    - ".github/**"
-              dependencies:
-                - package: ZipArchive
-              settings:
-                base:
-                  INFOPLIST_FILE: Info.plist
-                  PRODUCT_NAME: ProxyDetal
-                  PRODUCT_BUNDLE_IDENTIFIER: com.proxydetal.app
-                  GENERATE_INFOPLIST_FILE: NO
-                  CODE_SIGN_ENTITLEMENTS: app.entitlements
-                  CODE_SIGNING_ALLOWED: NO
-                  CODE_SIGNING_REQUIRED: NO
-          EOF
-          
-          xcodegen generate
-          xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
-
-          xcodebuild clean archive \
-            -project ProxyDetal.xcodeproj \
-            -scheme ProxyDetal \
-            -sdk iphoneos \
-            -configuration Release \
-            -archivePath $PWD/build/App.xcarchive \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_ENTITLEMENTS="app.entitlements"
-
-      - name: Package to IPA
-        run: |
-          mkdir -p $PWD/build/Payload
-          cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
-          
-          APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
-          APP_PATH="$PWD/build/Payload/$APP_NAME"
-          
-          # Nhét thư mục Patches vào App
-          if [ -d "Patches" ]; then
-            cp -r "Patches" "$APP_PATH/Patches"
+          if [ -z "$TARGET_DIR" ]; then
+            echo "LỖI: Không tìm thấy file Makefile!"
+            exit 1
           fi
           
-          cd $PWD/build
-          zip -r 3105-Unsigned.ipa Payload
+          echo "Đang build tại: $TARGET_DIR"
+          cd "$TARGET_DIR"
+          
+          # Tiến hành build Tweak
+          make package FINALPACKAGE=1
 
-      - name: Upload IPA Artifact
+      - name: Upload Dylib Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 3105-IPA
-          path: $PWD/build/3105-Unsigned.ipa
+          # Lấy tất cả file .dylib được sinh ra trong quá trình build
+          path: '**/.theos/obj/**/*.dylib'
+          name: KGVN-Dylib
           retention-days: 7
