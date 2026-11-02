@@ -28,17 +28,21 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate Xcode Project
+      - name: Move to correct directory and Generate Project
         run: |
           TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
           cd "$TARGET_DIR"
           
+          # Copy file cấu hình từ ngoài vào
           cp ../../project.yml . || cp ../project.yml . || cp project.yml .
           if [ ! -f "app.entitlements" ]; then
             cp ../../app.entitlements . || cp ../app.entitlements . || cp app.entitlements .
           fi
           
           xcodegen generate
+          
+          # Resolve các gói thư viện (ZipArchive) trước khi build
+          xcodebuild -resolvePackageDependencies
 
       - name: Build Archive
         run: |
@@ -59,17 +63,15 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_ENTITLEMENTS="app.entitlements"
 
-      - name: Package to IPA (Copy Patches to App)
+      - name: Package to IPA
         run: |
           TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
           
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          # Copy thư mục Patches vào thẳng trong file .app sau khi build xong
           if [ -d "$TARGET_DIR/Patches" ]; then
             echo "Đang nhét thư mục Patches vào App..."
             cp -r "$TARGET_DIR/Patches" "$APP_PATH/Patches"
