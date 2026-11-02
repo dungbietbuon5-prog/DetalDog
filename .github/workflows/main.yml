@@ -14,47 +14,52 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
+      - name: 🔍 Debug: In ra cấu trúc thư mục hiện tại
+        run: |
+          echo "=== DANH SÁCH CÁC FILE TRONG REPO ==="
+          find . -maxdepth 3 -not -path '*/.*'
+
       - name: 🔨 Build Archive and Generate IPA
         run: |
-          echo "Đang tìm kiếm file ThreeOneOSFive.xcodeproj trong repository..."
-          
-          # Tự động tìm đường dẫn chứa file .xcodeproj
-          PROJECT_PATH=$(find . -name "ThreeOneOSFive.xcodeproj" | head -n 1)
+          # Tự động tìm file .xcodeproj bất kỳ trong repository
+          PROJECT_PATH=$(find . -name "*.xcodeproj" | head -n 1)
           
           if [ -z "$PROJECT_PATH" ]; then
-            echo "❌ Lỗi: Không tìm thấy file ThreeOneOSFive.xcodeproj trong repo!"
+            echo "❌ Lỗi: Không tìm thấy file Xcode project (.xcodeproj) nào trong repo!"
             exit 1
           fi
           
-          # Lấy thư mục cha chứa file project và chuyển vào đó
           PROJECT_DIR=$(dirname "$PROJECT_PATH")
           cd "$PROJECT_DIR"
-          echo "✅ Đã tìm thấy và chuyển vào thư mục: $(pwd)"
+          PROJECT_FILE=$(basename "$PROJECT_PATH")
+          PROJECT_NAME=$(basename "$PROJECT_PATH" .xcodeproj)
+          
+          echo "✅ Đã tìm thấy project: $PROJECT_NAME (file: $PROJECT_FILE) tại thư mục: $(pwd)"
           
           # Tạo thư mục chứa bản dựng
           mkdir -p build/Payload
           
           # Tiến hành build và archive (bỏ qua ký số để sideload)
-          xcodebuild -project ThreeOneOSFive.xcodeproj \
-                     -scheme ThreeOneOSFive \
+          xcodebuild -project "$PROJECT_FILE" \
+                     -scheme "$PROJECT_NAME" \
                      -configuration Release \
                      -derivedDataPath build/DerivedData \
-                     archive -archivePath build/ThreeOneOSFive.xcarchive \
+                     archive -archivePath build/"$PROJECT_NAME".xcarchive \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
 
           echo "Đang đóng gói file .ipa..."
-          APP_PATH="build/ThreeOneOSFive.xcarchive/Products/Applications/ThreeOneOSFive.app"
+          APP_PATH="build/$PROJECT_NAME.xcarchive/Products/Applications/$PROJECT_NAME.app"
           
           if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find build/DerivedData -name "ThreeOneOSFive.app" | head -n 1)
+            APP_PATH=$(find build/DerivedData -name "*.app" | head -n 1)
           fi
 
           if [ -d "$APP_PATH" ]; then
             cp -r "$APP_PATH" build/Payload/
             cd build
-            zip -r ThreeOneOSFive.ipa Payload
+            zip -r "$PROJECT_NAME.ipa" Payload
             echo "✅ Đã tạo thành công file IPA!"
           else
             echo "❌ Lỗi: Không tìm thấy file .app sau khi build!"
@@ -65,5 +70,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ThreeOneOSFive-IPA
-          path: '**/build/ThreeOneOSFive.ipa'
+          path: '**/build/*.ipa'
           retention-days: 7
