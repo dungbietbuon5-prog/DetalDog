@@ -11,21 +11,20 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: 📥 Checkout Repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔍 Debug: In ra cấu trúc thư mục hiện tại
+      - name: Debug Directory Structure
         run: |
-          echo "=== DANH SÁCH CÁC FILE TRONG REPO ==="
+          echo "=== DANH SACH CAC FILE TRONG REPO ==="
           find . -maxdepth 3 -not -path '*/.*'
 
-      - name: 🔨 Build Archive and Generate IPA
+      - name: Build Archive and Generate IPA
         run: |
-          # Tự động tìm file .xcodeproj bất kỳ trong repository
           PROJECT_PATH=$(find . -name "*.xcodeproj" | head -n 1)
           
           if [ -z "$PROJECT_PATH" ]; then
-            echo "❌ Lỗi: Không tìm thấy file Xcode project (.xcodeproj) nào trong repo!"
+            echo "Loi: Khong tim thay file Xcode project (.xcodeproj) nao trong repo!"
             exit 1
           fi
           
@@ -34,12 +33,10 @@ jobs:
           PROJECT_FILE=$(basename "$PROJECT_PATH")
           PROJECT_NAME=$(basename "$PROJECT_PATH" .xcodeproj)
           
-          echo "✅ Đã tìm thấy project: $PROJECT_NAME (file: $PROJECT_FILE) tại thư mục: $(pwd)"
+          echo "Da tim thay project: $PROJECT_NAME (file: $PROJECT_FILE) tai thu muc: $(pwd)"
           
-          # Tạo thư mục chứa bản dựng
           mkdir -p build/Payload
           
-          # Tiến hành build và archive (bỏ qua ký số để sideload)
           xcodebuild -project "$PROJECT_FILE" \
                      -scheme "$PROJECT_NAME" \
                      -configuration Release \
@@ -49,7 +46,7 @@ jobs:
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
 
-          echo "Đang đóng gói file .ipa..."
+          echo "Dang dong goi file .ipa..."
           APP_PATH="build/$PROJECT_NAME.xcarchive/Products/Applications/$PROJECT_NAME.app"
           
           if [ ! -d "$APP_PATH" ]; then
@@ -60,13 +57,13 @@ jobs:
             cp -r "$APP_PATH" build/Payload/
             cd build
             zip -r "$PROJECT_NAME.ipa" Payload
-            echo "✅ Đã tạo thành công file IPA!"
+            echo "Da tao thanh cong file IPA!"
           else
-            echo "❌ Lỗi: Không tìm thấy file .app sau khi build!"
+            echo "Loi: Khong tim thay file .app sau khi build!"
             exit 1
           fi
 
-      - name: 📦 Upload IPA Artifact
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ThreeOneOSFive-IPA
