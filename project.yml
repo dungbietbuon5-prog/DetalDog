@@ -12,17 +12,17 @@ targets:
     type: application
     platform: iOS
     sources: 
-      - path: ThreeOneOSFive 
+      - path: . 
         excludes:
           - "Patches/**"
     dependencies:
       - package: ZipArchive
     settings:
       base:
-        INFOPLIST_FILE: ThreeOneOSFive/Info.plist
+        INFOPLIST_FILE: Info.plist
         PRODUCT_NAME: ProxyDetal
         PRODUCT_BUNDLE_IDENTIFIER: com.proxydetal.app
         GENERATE_INFOPLIST_FILE: NO
-        CODE_SIGN_ENTITLEMENTS: ThreeOneOSFive/app.entitlements
+        CODE_SIGN_ENTITLEMENTS: app.entitlements
         CODE_SIGNING_ALLOWED: NO
         CODE_SIGNING_REQUIRED: NO
