@@ -14,20 +14,21 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Set up Xcode Version
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '15.2' # Hoặc phiên bản tương thích với project của bạn
-
       - name: 🔨 Build Archive and Generate IPA
         run: |
-          echo "Bắt đầu build project ThreeOneOSFive..."
-          cd Detal-main
+          echo "Kiểm tra phiên bản Xcode trên hệ thống..."
+          xcodebuild -version
+
+          # Tự động chuyển vào thư mục chứa project nếu có (ví dụ: Detal-main)
+          if [ -d "Detal-main" ]; then
+            cd Detal-main
+            echo "Đã chuyển vào thư mục: Detal-main"
+          fi
           
           # Tạo thư mục chứa bản dựng
           mkdir -p build/Payload
           
-          # Tiến hành build và archive (bỏ qua ký số mặc định nếu dùng để sideload/re-sign)
+          # Tiến hành build và archive (bỏ qua ký số để sideload)
           xcodebuild -project ThreeOneOSFive.xcodeproj \
                      -scheme ThreeOneOSFive \
                      -configuration Release \
@@ -38,7 +39,6 @@ jobs:
                      CODE_SIGNING_ALLOWED=NO
 
           echo "Đang đóng gói file .ipa..."
-          # Tìm đường dẫn file .app sau khi archive
           APP_PATH="build/ThreeOneOSFive.xcarchive/Products/Applications/ThreeOneOSFive.app"
           
           if [ ! -d "$APP_PATH" ]; then
@@ -49,7 +49,7 @@ jobs:
             cp -r "$APP_PATH" build/Payload/
             cd build
             zip -r ThreeOneOSFive.ipa Payload
-            echo "✅ Đã tạo thành công file IPA tại: Detal-main/build/ThreeOneOSFive.ipa"
+            echo "✅ Đã tạo thành công file IPA!"
           else
             echo "❌ Lỗi: Không tìm thấy file .app sau khi build!"
             exit 1
@@ -59,5 +59,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ThreeOneOSFive-IPA
-          path: Detal-main/build/ThreeOneOSFive.ipa
+          path: '**/build/ThreeOneOSFive.ipa'
           retention-days: 7
