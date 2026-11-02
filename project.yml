@@ -1,19 +1,19 @@
-name: ThreeOneOSFive
+name: ProxyDetal
 options:
-  bundleIdPrefix: com.threeone
+  bundleIdPrefix: com.proxydetal
   deploymentTarget:
     iOS: "15.0"
 targets:
-  ThreeOneOSFive:
+  ProxyDetal:
     type: application
     platform: iOS
     sources: 
-      - path: . 
+      - path: ThreeOneOSFive
     settings:
       base:
-        INFOPLIST_FILE: Info.plist
-        PRODUCT_NAME: ThreeOneOSFive
+        INFOPLIST_FILE: ThreeOneOSFive/Info.plist
+        PRODUCT_NAME: ProxyDetal
         GENERATE_INFOPLIST_FILE: NO
-        CODE_SIGN_ENTITLEMENTS: app.entitlements
+        CODE_SIGN_ENTITLEMENTS: ThreeOneOSFive/app.entitlements
         CODE_SIGNING_ALLOWED: NO
         CODE_SIGNING_REQUIRED: NO
