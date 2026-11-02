@@ -13,25 +13,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Unzip Source Code
+      - name: Unzip and Flatten Source Code
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
             unzip -q "$ZIP_FILE"
             rm "$ZIP_FILE"
           fi
+          
+          # Xóa file rác của Mac
           rm -rf __MACOSX
           find . -name "._*" -delete
           
-          # Chuyển toàn bộ nội dung thư mục con ra ngoài thư mục gốc để tránh lỗi duplicate
+          # Đưa file ra ngoài và xóa thư mục thừa
           if [ -d "ProxyDetal-1.1.0" ]; then
-            mv ProxyDetal-1.1.0/* .
-            rmdir ProxyDetal-1.1.0
+            cp -R ProxyDetal-1.1.0/* . 2>/dev/null || true
+            rm -rf ProxyDetal-1.1.0
           fi
           
           if [ -d "ThreeOneOSFive" ]; then
-            mv ThreeOneOSFive/* .
-            rmdir ThreeOneOSFive
+            cp -R ThreeOneOSFive/* . 2>/dev/null || true
+            rm -rf ThreeOneOSFive
           fi
 
       - name: Select Xcode Version
@@ -42,6 +44,7 @@ jobs:
 
       - name: Generate Xcode Project
         run: |
+          # Chạy XcodeGen và tải thư viện
           xcodegen generate
           xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
 
@@ -66,7 +69,7 @@ jobs:
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          # Nhét thư mục Patches vào trong App
+          # Copy thư mục Patches vào App
           if [ -d "Patches" ]; then
             cp -r "Patches" "$APP_PATH/Patches"
           fi
