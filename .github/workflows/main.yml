@@ -21,6 +21,9 @@ jobs:
             unzip -q "$ZIP_FILE"
             rm "$ZIP_FILE"
           fi
+          # Dọn dẹp file rác của macOS
+          rm -rf __MACOSX
+          find . -name "._*" -delete
 
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
@@ -28,23 +31,16 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Move to correct directory and Generate Project
+      - name: Generate Xcode Project
         run: |
-          # Tự động tìm thư mục chứa file App.swift
+          # Copy project.yml vào thẳng thư mục chứa code
           TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
+          if [ -z "$TARGET_DIR" ]; then echo "LỖI: Không tìm thấy App.swift"; exit 1; fi
           
-          if [ -z "$TARGET_DIR" ]; then
-            echo "LỖI: Không tìm thấy file App.swift!"
-            exit 1
-          fi
-          
-          echo "Đã tìm thấy source code tại: $TARGET_DIR"
           cd "$TARGET_DIR"
-          
-          # Copy file project.yml từ ngoài vào
           cp ../../project.yml . || cp ../project.yml . || cp project.yml .
           
-          # Chạy XcodeGen
+          # Tạo project
           xcodegen generate
           
           # Tải thư viện ZipArchive
@@ -69,14 +65,16 @@ jobs:
       - name: Package to IPA
         run: |
           TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
+          
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
           
           APP_NAME=$(find $PWD/build/Payload -name "*.app" -exec basename {} \; | head -n 1)
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
-          # Nhét thư mục Patches vào App
+          # Nhét thư mục Patches vào trong App
           if [ -d "$TARGET_DIR/Patches" ]; then
+            echo "Đang nhét thư mục Patches vào App..."
             cp -r "$TARGET_DIR/Patches" "$APP_PATH/Patches"
           fi
           
