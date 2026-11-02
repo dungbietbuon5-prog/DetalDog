@@ -16,14 +16,20 @@ jobs:
 
       - name: 🔨 Build Archive and Generate IPA
         run: |
-          echo "Kiểm tra phiên bản Xcode trên hệ thống..."
-          xcodebuild -version
-
-          # Tự động chuyển vào thư mục chứa project nếu có (ví dụ: Detal-main)
-          if [ -d "Detal-main" ]; then
-            cd Detal-main
-            echo "Đã chuyển vào thư mục: Detal-main"
+          echo "Đang tìm kiếm file ThreeOneOSFive.xcodeproj trong repository..."
+          
+          # Tự động tìm đường dẫn chứa file .xcodeproj
+          PROJECT_PATH=$(find . -name "ThreeOneOSFive.xcodeproj" | head -n 1)
+          
+          if [ -z "$PROJECT_PATH" ]; then
+            echo "❌ Lỗi: Không tìm thấy file ThreeOneOSFive.xcodeproj trong repo!"
+            exit 1
           fi
+          
+          # Lấy thư mục cha chứa file project và chuyển vào đó
+          PROJECT_DIR=$(dirname "$PROJECT_PATH")
+          cd "$PROJECT_DIR"
+          echo "✅ Đã tìm thấy và chuyển vào thư mục: $(pwd)"
           
           # Tạo thư mục chứa bản dựng
           mkdir -p build/Payload
