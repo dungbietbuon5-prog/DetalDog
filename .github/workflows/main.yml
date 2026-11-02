@@ -17,13 +17,22 @@ jobs:
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
-            echo "Đang giải nén $ZIP_FILE..."
             unzip -q "$ZIP_FILE"
             rm "$ZIP_FILE"
           fi
-          # Dọn dẹp file rác của macOS
           rm -rf __MACOSX
           find . -name "._*" -delete
+          
+          # Chuyển toàn bộ nội dung thư mục con ra ngoài thư mục gốc để tránh lỗi duplicate
+          if [ -d "ProxyDetal-1.1.0" ]; then
+            mv ProxyDetal-1.1.0/* .
+            rmdir ProxyDetal-1.1.0
+          fi
+          
+          if [ -d "ThreeOneOSFive" ]; then
+            mv ThreeOneOSFive/* .
+            rmdir ThreeOneOSFive
+          fi
 
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
@@ -33,30 +42,17 @@ jobs:
 
       - name: Generate Xcode Project
         run: |
-          # Copy project.yml vào thẳng thư mục chứa code
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          if [ -z "$TARGET_DIR" ]; then echo "LỖI: Không tìm thấy App.swift"; exit 1; fi
-          
-          cd "$TARGET_DIR"
-          cp ../../project.yml . || cp ../project.yml . || cp project.yml .
-          
-          # Tạo project
           xcodegen generate
-          
-          # Tải thư viện ZipArchive
           xcodebuild -resolvePackageDependencies -project ProxyDetal.xcodeproj
 
       - name: Build Archive
         run: |
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          cd "$TARGET_DIR"
-          
           xcodebuild clean archive \
             -project ProxyDetal.xcodeproj \
             -scheme ProxyDetal \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $PWD/../build/App.xcarchive \
+            -archivePath $PWD/build/App.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -64,8 +60,6 @@ jobs:
 
       - name: Package to IPA
         run: |
-          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
-          
           mkdir -p $PWD/build/Payload
           cp -r $PWD/build/App.xcarchive/Products/Applications/*.app $PWD/build/Payload/
           
@@ -73,9 +67,8 @@ jobs:
           APP_PATH="$PWD/build/Payload/$APP_NAME"
           
           # Nhét thư mục Patches vào trong App
-          if [ -d "$TARGET_DIR/Patches" ]; then
-            echo "Đang nhét thư mục Patches vào App..."
-            cp -r "$TARGET_DIR/Patches" "$APP_PATH/Patches"
+          if [ -d "Patches" ]; then
+            cp -r "Patches" "$APP_PATH/Patches"
           fi
           
           cd $PWD/build
