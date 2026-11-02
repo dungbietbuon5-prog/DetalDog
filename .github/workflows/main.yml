@@ -1,62 +1,63 @@
-name: Build Raw Dylib
+name: Build ThreeOneOSFive IPA
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: macos-14
+  build-ipa:
+    name: Build and Package iOS App
+    runs-on: macos-latest
 
     steps:
-      - name: Checkout Code
+      - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+      - name: ⚙️ Set up Xcode Version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.2' # Hoặc phiên bản tương thích với project của bạn
 
-      - name: Install Theos
+      - name: 🔨 Build Archive and Generate IPA
         run: |
-          export THEOS=$HOME/theos
-          mkdir -p $THEOS
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          curl -L https://github.com/theos/sdks/archive/master.zip -o sdks.zip
-          unzip sdks.zip -d $THEOS/sdks
-          mv $THEOS/sdks/sdks-master/* $THEOS/sdks/
-          rm -rf $THEOS/sdks/sdks-master sdks.zip
-          curl -L https://github.com/ProcursusTeam/ldid/releases/download/v2.1.5-procursus7/ldid_macosx_x86_64 -o $THEOS/bin/ldid
-          chmod +x $THEOS/bin/ldid
-
-      - name: Compile Tweak (Dylib Only)
-        run: |
-          export THEOS=$HOME/theos
-          export PATH=$THEOS/bin:$PATH
+          echo "Bắt đầu build project ThreeOneOSFive..."
+          cd Detal-main
           
-          # Tạo Makefile
-          echo "ARCHS = arm64 arm64e" > Makefile
-          echo "TARGET = iphone:clang:latest:15.0" >> Makefile
-          echo "include \$(THEOS)/makefiles/common.mk" >> Makefile
-          echo "TWEAK_NAME = TrungDungFF" >> Makefile
-          echo "TrungDungFF_FILES = Tweak.xm" >> Makefile
-          echo "TrungDungFF_FRAMEWORKS = UIKit Foundation" >> Makefile
-          echo "TrungDungFF_CFLAGS = -Wno-error -Wno-deprecated-declarations" >> Makefile
-          echo "include \$(THEOS_MAKE_PATH)/tweak.mk" >> Makefile
+          # Tạo thư mục chứa bản dựng
+          mkdir -p build/Payload
+          
+          # Tiến hành build và archive (bỏ qua ký số mặc định nếu dùng để sideload/re-sign)
+          xcodebuild -project ThreeOneOSFive.xcodeproj \
+                     -scheme ThreeOneOSFive \
+                     -configuration Release \
+                     -derivedDataPath build/DerivedData \
+                     archive -archivePath build/ThreeOneOSFive.xcarchive \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
 
-          # Chạy build (chỉ lấy dylib, không đóng gói deb)
-          make package FINALPACKAGE=1
+          echo "Đang đóng gói file .ipa..."
+          # Tìm đường dẫn file .app sau khi archive
+          APP_PATH="build/ThreeOneOSFive.xcarchive/Products/Applications/ThreeOneOSFive.app"
+          
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find build/DerivedData -name "ThreeOneOSFive.app" | head -n 1)
+          fi
 
-      - name: Merge Dylibs (Fat Binary)
-        run: |
-          # Gộp file arm64 và arm64e thành 1 file duy nhất (Fat Binary)
-          lipo -create \
-            .theos/obj/arm64/TrungDungFF.dylib \
-            .theos/obj/arm64e/TrungDungFF.dylib \
-            -output $PWD/TrungDungFF-Final.dylib
+          if [ -d "$APP_PATH" ]; then
+            cp -r "$APP_PATH" build/Payload/
+            cd build
+            zip -r ThreeOneOSFive.ipa Payload
+            echo "✅ Đã tạo thành công file IPA tại: Detal-main/build/ThreeOneOSFive.ipa"
+          else
+            echo "❌ Lỗi: Không tìm thấy file .app sau khi build!"
+            exit 1
+          fi
 
-      - name: Upload Final Dylib
+      - name: 📦 Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Final-Dylib
-          path: TrungDungFF-Final.dylib
+          name: ThreeOneOSFive-IPA
+          path: Detal-main/build/ThreeOneOSFive.ipa
           retention-days: 7
