@@ -1,0 +1,19 @@
+name: ThreeOneOSFive
+options:
+  bundleIdPrefix: com.threeone
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  ThreeOneOSFive:
+    type: application
+    platform: iOS
+    sources: 
+      - path: . 
+    settings:
+      base:
+        INFOPLIST_FILE: Info.plist
+        PRODUCT_NAME: ThreeOneOSFive
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: app.entitlements
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
