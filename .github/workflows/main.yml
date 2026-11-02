@@ -15,14 +15,11 @@ jobs:
 
       - name: Unzip Source Code
         run: |
-          # Tự động tìm file zip ở thư mục gốc và giải nén
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -n 1)
           if [ -n "$ZIP_FILE" ]; then
             echo "Đang giải nén $ZIP_FILE..."
             unzip -q "$ZIP_FILE"
             rm "$ZIP_FILE"
-          else
-            echo "Không tìm thấy file zip nào!"
           fi
 
       - name: Select Xcode Version
@@ -31,13 +28,26 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate Xcode Project
-        run: xcodegen generate
+      - name: Move to correct directory and Generate Project
+        run: |
+          # Tự động tìm thư mục chứa file App.swift
+          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
+          
+          if [ -z "$TARGET_DIR" ]; then
+            echo "LỖI: Không tìm thấy file App.swift ở đâu cả!"
+            exit 1
+          fi
+          
+          echo "Đã tìm thấy source code tại: $TARGET_DIR"
+          cd "$TARGET_DIR"
+          
+          # Chạy XcodeGen tại thư mục chứa code
+          xcodegen generate
 
       - name: Build Archive
         run: |
-          # Nhảy vào thư mục chứa code
-          cd ThreeOneOSFive
+          TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
+          cd "$TARGET_DIR"
           
           PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
           PROJECT_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
