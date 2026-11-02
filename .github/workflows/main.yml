@@ -34,12 +34,20 @@ jobs:
           TARGET_DIR=$(find . -name "App.swift" -exec dirname {} \; | head -n 1)
           
           if [ -z "$TARGET_DIR" ]; then
-            echo "LỖI: Không tìm thấy file App.swift ở đâu cả!"
+            echo "LỖI: Không tìm thấy file App.swift!"
             exit 1
           fi
           
           echo "Đã tìm thấy source code tại: $TARGET_DIR"
           cd "$TARGET_DIR"
+          
+          # Copy file project.yml từ thư mục gốc GitHub vào thư mục code
+          cp ../../project.yml . || cp ../project.yml . || cp project.yml .
+          
+          # Copy file app.entitlements nếu chưa có trong thư mục code
+          if [ ! -f "app.entitlements" ]; then
+            cp ../../app.entitlements . || cp ../app.entitlements . || cp app.entitlements .
+          fi
           
           # Chạy XcodeGen tại thư mục chứa code
           xcodegen generate
