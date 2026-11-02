@@ -36,6 +36,9 @@ jobs:
 
       - name: Build Archive
         run: |
+          # Nhảy vào thư mục chứa code
+          cd ThreeOneOSFive
+          
           PROJECT_FILE=$(find . -name "*.xcodeproj" | head -n 1)
           PROJECT_NAME=$(basename "$PROJECT_FILE" .xcodeproj)
           
@@ -44,7 +47,7 @@ jobs:
             -scheme "$PROJECT_NAME" \
             -sdk iphoneos \
             -configuration Release \
-            -archivePath $PWD/build/App.xcarchive \
+            -archivePath $PWD/../build/App.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
