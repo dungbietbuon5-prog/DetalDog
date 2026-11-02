@@ -12,19 +12,14 @@ targets:
     type: application
     platform: iOS
     sources: 
-      # Quét tất cả file swift, plist, entitlements, assets trong toàn bộ project
       - path: .
-        includes:
-          - "**/*.swift"
-          - "**/*.plist"
-          - "**/*.entitlements"
-          - "**/*.xcassets"
         excludes:
-          - "**/Patches/**" # Bỏ qua thư mục Patches khi build
+          - "**/Patches/**"
     dependencies:
       - package: ZipArchive
     settings:
       base:
+        INFOPLIST_FILE: Info.plist
         PRODUCT_NAME: ProxyDetal
         PRODUCT_BUNDLE_IDENTIFIER: com.proxydetal.app
         GENERATE_INFOPLIST_FILE: NO
